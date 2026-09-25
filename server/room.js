@@ -24,7 +24,9 @@ const SPAWNS = [
 
 function cleanName(raw) {
   if (typeof raw !== 'string') return '';
-  const s = raw.replace(/[\u0000-\u001f\u007f]/g, '').trim();
+  // <> 一并滤掉：名单文案目前全走 textContent/canvas，但名字会进所有客户端，
+  // 不在入口收掉等于把 XSS 押在每一处渲染点都永远守规矩上
+  const s = raw.replace(/[\u0000-\u001f\u007f<>]/g, '').trim();
   let out = '';
   for (const ch of s) {
     if (Buffer.byteLength(out + ch, 'utf8') > MAX_NAME) break;
@@ -109,11 +111,21 @@ export function attachRoom(httpServer, { path = '/ws', now = () => Date.now(), n
   }
 
   wss.on('connection', (ws, req) => {
-    const ip = req.socket.remoteAddress || '?';
+    // 反代后所有连接的 remoteAddress 都是代理地址（同机部署时是 127.0.0.1），
+    // 不换算成真实来源的话，限连会把全场玩家当成同一个人，第 13 个并发就进不来。
+    // X-Forwarded-For 只在连接确实来自本机时才信（那是自家代理追加的），且取最后一节
+    // —— 前面的节是客户端自带、可以伪造的。直连一律用真实地址，伪造头绕不开。
+    const remote = req.socket.remoteAddress || '?';
+    const loopback = remote === '127.0.0.1' || remote === '::1' || remote === '::ffff:127.0.0.1';
+    const xff = loopback && typeof req.headers['x-forwarded-for'] === 'string' ? req.headers['x-forwarded-for'] : '';
+    const ip = (xff ? xff.split(',').pop().trim() : remote) || '?';
     const count = (ipCount.get(ip) || 0) + 1;
     ipCount.set(ip, count);
     if (count > 12) {
-      // 同一 IP 超过 12 个连接：大概率是循环刷新或者有人写脚本，直接拒绝
+      // 同一 IP 超过 12 个连接：大概率是循环刷新或者有人写脚本，直接拒绝。
+      // 被拒的连接走不到下面的 close 登记，得在这里把自己那份减回去，
+      // 否则计数只涨不跌，拒绝过一轮之后这个 IP 就永远进不来了
+      ipCount.set(ip, count - 1);
       try { ws.close(1013, 'too many connections'); } catch {}
       return;
     }
@@ -369,7 +381,14 @@ export function attachRoom(httpServer, { path = '/ws', now = () => Date.now(), n
 
   if (httpServer) {
     const onUpgrade = (req, socket, head) => {
-      const pathname = new URL(req.url, 'http://localhost').pathname;
+      // target 解析不了时没有别的监听器能接手，必须自己断掉，不能让 throw 出去崩进程
+      let pathname;
+      try {
+        pathname = new URL(req.url, 'http://localhost').pathname;
+      } catch {
+        socket.destroy();
+        return;
+      }
       if (!paths.includes(pathname)) return;   // 不是我的路径，原样留给别的监听器
       room.handleUpgrade(req, socket, head);
     };

@@ -103,7 +103,15 @@ check('同参数两次请求数值也一致',
 
 // 边界态：服务器跑了几秒之后再看 —— 离线节点的 last_seen 第一帧还停在「已离线 340 秒」，
 // 一个 tick 之后才落到它真正的失联时刻，用开头的快照去对时间轴会对不上
-const fresh = (await (await fetch(`${base}/api/nodes`)).json()).nodes;
+// tick 落地前的 last_seen = 启动时刻-340，落地后 = goneAt（≈now-60）：两个值差 280 秒，
+// 轮询到差值进 120 秒阈值内就说明 tick 已经跑过，race 窗口内最多等 10 秒
+let fresh;
+for (let i = 0; i < 20; i++) {
+  fresh = (await (await fetch(`${base}/api/nodes`)).json()).nodes;
+  const off = fresh.find(n => !n.online && n.last_seen > 0);
+  if (off && Math.abs(Date.now() / 1000 - off.last_seen) < 120) break;
+  await new Promise(r => setTimeout(r, 500));
+}
 const offlineNode = fresh.find(n => !n.online && n.last_seen > 0);
 const off = await hist(offlineNode.id, 'hours=24&points=300&series=metrics');
 check('离线节点失联后不再有指标数据',

@@ -32,7 +32,7 @@ if (configPath) {
 }
 
 const cfg = {
-  hub: arg('hub', process.env.HUB_URL || fileConfig.hub || 'http://127.0.0.1:9911'),
+  hub: arg('hub', fileConfig.hub || 'http://127.0.0.1:9911'),
   port: Number(arg('port', process.env.PORT || fileConfig.port || 7789)),
   path: arg('path', fileConfig.path || '/ws'),
   host: arg('host', fileConfig.host || '0.0.0.0'),
@@ -59,6 +59,24 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
 
 const log = console;
 
+// hub 地址虽是运维配置而非用户输入，也在启动时归一校验：只收 http/https、
+// 不带账号密码，收窄成 origin 再进 fetch —— 配置写错当场报错退出，不带病运行
+function normalizeHubUrl(raw) {
+  let u;
+  try { u = new URL(String(raw)); } catch { throw new Error(`hub 地址不是合法 URL：${raw}`); }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+    throw new Error(`hub 地址只允许 http/https 协议（收到 ${u.protocol}）`);
+  }
+  if (u.username || u.password) throw new Error('hub 地址不允许携带账号密码');
+  return u.origin;
+}
+try {
+  cfg.hub = normalizeHubUrl(cfg.hub);
+} catch (e) {
+  console.error(`[cfg] ${e.message}（--hub 或 config.hub）`);
+  process.exit(1);
+}
+
 // ---- NPC 鸡的两个来源 ----
 const npcs = createNpcManager({ now: () => Date.now(), log });
 const hub = createHubSource({ url: cfg.hub, onNodes: (nodes) => npcs.rebuild(nodes, web.sites), log });
@@ -69,7 +87,15 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; cha
 const staticRoot = cfg.static ? resolve(cfg.static) : '';
 
 const server = createServer(async (req, res) => {
-  const { pathname } = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  // 请求行 target 是任意字节（如 GET http://[ HTTP/1.1），new URL 会抛；
+  // async handler 里抛出去就是 unhandledRejection，整个进程直接崩 —— 必须接住
+  let pathname;
+  try {
+    pathname = new URL(req.url, `http://${req.headers.host || 'localhost'}`).pathname;
+  } catch {
+    res.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' }).end('bad request');
+    return;
+  }
 
   if (pathname === '/healthz') {
     const s = npcs.stats();
@@ -77,7 +103,8 @@ const server = createServer(async (req, res) => {
       ok: true,
       room: { players: room.size },
       npc: { ...s, total: npcs.size },
-      hub: { url: cfg.hub, failures: hub.failures, nodes: hub.nodes.length },
+      // 不回显 hub 地址：/healthz 经反代后是公网可达的，内部拓扑不该露出去
+      hub: { failures: hub.failures, nodes: hub.nodes.length },
       websites: { total: web.sites.length, online: web.summary.online },
     });
     res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });

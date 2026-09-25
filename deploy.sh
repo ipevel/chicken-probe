@@ -108,6 +108,16 @@ fi
 # ---- 5. 起联机服务 ----
 if [[ "$DO_SYSTEMD" -eq 1 ]] && command -v systemctl >/dev/null; then
   log "配置 systemd 服务 chicken-room …"
+  # 网络服务不跟部署者同权限：root 部署时落到专用系统用户下跑，建不出来就退回并提醒
+  SVC_USER=$(id -un)
+  if [[ "$(id -u)" -eq 0 ]] && command -v useradd >/dev/null; then
+    if id -u chicken-room >/dev/null 2>&1 || useradd --system --home-dir "$INSTALL_DIR" --no-create-home --shell /usr/sbin/nologin chicken-room; then
+      chown -R chicken-room "$INSTALL_DIR"
+      SVC_USER=chicken-room
+    else
+      log "建不了 chicken-room 系统用户，服务将以 $(id -un) 运行（建议手动建用户）"
+    fi
+  fi
   cat > /etc/systemd/system/chicken-room.service <<EOF
 [Unit]
 Description=Chicken Farm room (monitor theme multiplayer)
@@ -118,7 +128,7 @@ WorkingDirectory=$INSTALL_DIR
 ExecStart=/usr/bin/node server/index.js --config server/config.json
 Restart=always
 RestartSec=3
-User=$(id -un)
+User=$SVC_USER
 
 [Install]
 WantedBy=multi-user.target
@@ -154,13 +164,14 @@ location /room/ {
     proxy_set_header Upgrade \$http_upgrade;
     proxy_set_header Connection "upgrade";
     proxy_set_header Host \$host;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
     proxy_read_timeout 300s;
 }
 EOF
       echo "  已写入 $CONF —— 请把它 include 进 $DOMAIN 的站点配置，或手动加 location。"
     else
       err "没找到 nginx 站点目录，跳过反向代理。请手动加:"
-      echo "  location /room/ { proxy_pass http://127.0.0.1:$PORT/; proxy_http_version 1.1; proxy_set_header Upgrade \$http_upgrade; proxy_set_header Connection \"upgrade\"; }"
+      echo "  location /room/ { proxy_pass http://127.0.0.1:$PORT/; proxy_http_version 1.1; proxy_set_header Upgrade \$http_upgrade; proxy_set_header Connection \"upgrade\"; proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for; }"
     fi
   else
     err "没探测到面板域名，跳过反向代理。请手动加 /room/ → $PORT 的转发。"
@@ -170,7 +181,9 @@ fi
 # ---- 7. 装主题 ----
 if [[ "$DO_THEME" -eq 1 ]]; then
   log "打包主题…"
-  npm run build:theme >/dev/null 2>&1
+  # 只吞 stdout：构建失败时 stderr 要露出来，set -e 会让部署当场停下，而不是
+  # 拿着不存在的 tar 报一句看不懂的错
+  npm run build:theme >/dev/null
   TAR=build/theme.tar.gz
   log "主题包: $TAR ($(du -h "$TAR" | cut -f1))"
   echo

@@ -6,6 +6,9 @@ build/
 .shots/
 *.log
 
+# 本地安全扫描插件状态（Mimosa hook-state）
+.mimosa/
+
 # 本地配置：里面是本机的主控地址与网站列表，用它自己的 example 起步
 server/config.json
 

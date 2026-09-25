@@ -256,7 +256,8 @@ export function createFarm({ identity, onChangeIdentity, onExit } = {}) {
 
   // ---------------- 身份 ----------------
   function cleanName(raw) {
-    const s = String(raw || '').replace(/[\u0000-\u001f\u007f]/g, '').trim();
+    // 与服务端 room.js 的 cleanName 同规则：<> 也滤，本地预览才和全场看到的名字一致
+    const s = String(raw || '').replace(/[\u0000-\u001f\u007f<>]/g, '').trim();
     let out = '';
     for (const ch of s) {
       if (new TextEncoder().encode(out + ch).length > 24) break;

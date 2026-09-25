@@ -111,7 +111,14 @@ async function serveStatic(req, res, pathname) {
 }
 
 const server = createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  // 同生产入口：解析不了的请求行 target 得接住回 400，否则 unhandledRejection 崩进程
+  let url;
+  try {
+    url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  } catch {
+    res.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' }).end('bad request');
+    return;
+  }
   const p = url.pathname;
 
   if (p === '/api/me') return json(res, { authed: false, github: false, site_name: SITE_NAME, public_page: true });
@@ -136,7 +143,13 @@ const server = createServer(async (req, res) => {
 // /api/ws：hub 是 2 秒一推的 {nodes, admin}；这里照抄帧形状与节奏
 const hub = new WebSocketServer({ noServer: true });
 server.on('upgrade', (req, socket, head) => {
-  const { pathname } = new URL(req.url, 'http://localhost');
+  let pathname;
+  try {
+    pathname = new URL(req.url, 'http://localhost').pathname;
+  } catch {
+    socket.destroy();
+    return;
+  }
   if (pathname === '/api/ws') {
     hub.handleUpgrade(req, socket, head, (ws) => {
       const push = () => {

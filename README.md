@@ -126,7 +126,7 @@ node server/index.js --config server/config.json
 | `static` | `--static <dir>` | — | 顺带托管一份主题产物，仅用于**本地体检**；生产由 hub 托管，留空 |
 | `websites` | — | `[]` | 「网站鸡」的来源，见 2.4；留空就没有网站鸡 |
 
-环境变量 `HUB_URL`、`PORT` 可作为对应项的兜底；`node server/index.js --help` 打印全部参数。
+环境变量 `PORT` 可作为 `--port` 的兜底；hub 地址支持配置文件 / `--hub` 两种来源，启动时校验协议与形态、归一成 origin，写错当场报错退出。`node server/index.js --help` 打印全部参数。
 
 ### 2.4 网站鸡（`websites`）
 
@@ -172,11 +172,12 @@ location /room/ {
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
     proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;   # 服务端按真实来源限连数
     proxy_read_timeout 300s;      # WebSocket 是长连接，别让代理掐掉
 }
 ```
 
-**Caddy**：`handle_path /room/* { reverse_proxy 127.0.0.1:7789 }`
+**Caddy**：`handle_path /room/* { reverse_proxy 127.0.0.1:7789 }`（Caddy 自动带 X-Forwarded-For）
 
 > hub 对主题没有任何 CSP 限制，所以也可以把联机服务放另一个域名 —— 但它本质上是主题的后端，
 > 同机 + 同域代理最省事：证书、跨域、运维都简单。若确实要跨域，见 3.1 的三级覆盖。
