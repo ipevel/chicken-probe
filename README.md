@@ -14,6 +14,34 @@
 
 ---
 
+## 零、一键部署（推荐）
+
+从 GitHub 拉下来就能直接用，不需要手动调配置。脚本自动完成：装依赖 → 生成配置 → 起联机服务(systemd) → 配反向代理 → 打包主题。
+
+```bash
+# 在主控那台机器上（monitor hub 所在），root 执行：
+curl -fsSL https://raw.githubusercontent.com/ipevel/chicken-probe/main/deploy.sh -o /tmp/deploy.sh
+bash /tmp/deploy.sh
+```
+
+脚本会自动探测 hub 端口（9911/28080）、生成 `server/config.json`（`websites` 默认留空，不探测任何第三方站点）、把联机服务装成 `chicken-room` 常驻服务、写 nginx 反向代理、并打出主题包。
+
+常用选项（全部可选）：
+
+| 选项 | 作用 |
+|---|---|
+| `--hub-port <n>` | 手动指定 hub 端口（自动探测失败时用） |
+| `--domain <d>` | 面板域名，用于反向代理（默认自动探测） |
+| `--port <n>` | 联机服务端口（默认 7789） |
+| `--install-dir <p>` | 安装目录（默认 `/opt/chicken-probe`） |
+| `--no-theme` / `--no-proxy` / `--no-systemd` | 跳过对应步骤 |
+
+跑完看输出里的「下一步」：把 `build/theme.tar.gz` 传到 hub 面板「主题 → 上传」，或按提示手动解压到主题目录并切换。之后浏览器打开面板，点「进鸡场」即可。
+
+> 想加「网站鸡」？装完后编辑 `server/config.json` 的 `websites` 数组，`systemctl restart chicken-room`。
+
+---
+
 ## 一、安装主题
 
 主题是一个**纯静态包**：根目录放 `dist/` 与 `theme.json`，由 monitor hub 托管在域名根路径。
