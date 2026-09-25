@@ -401,6 +401,9 @@ export function createPanel({ onEnterFarm } = {}) {
   ];
   const detail = { tab: 'resources', hours: 6, loadedKey: '', loading: false, error: '', lastTryAt: 0, fetchedAt: 0, metrics: null, ping: null };
   const RETRY_AFTER_MS = 30_000;
+  // 抽屉当前内容是「按哪个状态」建的：只有它没变时才允许走「只换 facts」的增量更新。
+  // 历史加载完成 / 失败 / 换节点换范围都会改这个签名 —— 那些情况必须整块重建。
+  let drawerSig = '';
 
   const PROBE_COLORS = ['var(--c-ping-1)', 'var(--c-ping-2)', 'var(--c-ping-3)', 'var(--c-ping-4)'];
   const RES_CHARTS = [
@@ -632,18 +635,27 @@ export function createPanel({ onEnterFarm } = {}) {
     const body = el('div', 'body');
     body.append(tabs, ranges, stamp, chartsArea(node), facts(node, now));
 
-    // 详情页已打开且是同一节点：只更新实时 facts，不重建抽屉（否则滚动位置丢失）
+    // 详情页已打开且是同一节点、且内容签名没变：只更新实时 facts，不重建抽屉（否则滚动位置丢失）。
+    // 签名把「历史是否已加载」也算进去 —— 早先这里只看 refresh，加载完成后的重画被当成
+    // 「只是 facts 变了」而提前返回，曲线区就永远停在「历史数据未加载」，非点一次 ⟳ 才出来。
+    const sig = `${node.id}|${detail.tab}|${detail.hours}|${detail.loading ? 1 : 0}|${detail.error}|${detail.fetchedAt}`;
     const existing = drawer.querySelector('.drawer-facts');
-    if (existing && state.open === node.id && !refresh) {
+    if (existing && state.open === node.id && !refresh && sig === drawerSig) {
       existing.replaceWith(facts(node, now));
       drawer.classList.remove('closed');
       return;
     }
+    drawerSig = sig;
     drawer.replaceChildren(head, body);
     drawer.classList.remove('closed');
 
-    // 打开或切换范围/页签时才请求历史；2 秒一次的推送只走重画
-    if (refresh && detailKeyChanged(node)) {
+    // 该拉历史就去拉：换节点/页签/范围（key 变了）、失败退避到点重试，以及「首次构建时
+    // 还没有数据」都要触发。不能再限定 refresh —— 深链打开时抽屉是 setNodes 那条路建的
+    // （refresh=false），限定之后永远等不到第一次请求。2 秒一次的推送 key 没变，不会重复请求。
+    if (detailKeyChanged(node)) {
+      // 立刻给可见反馈：别让人对着「尚未读取历史」以为坏了
+      stamp.textContent = '正在读取历史…';
+      reload.disabled = true;
       void ensureDetailLoaded(node).then((changed) => { if (changed) void renderDrawer({ refresh: false }); });
     }
   }

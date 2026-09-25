@@ -18,12 +18,18 @@ import { createSfx } from './sfx.js';
 import { createFeathers } from './feathers.js';
 import { createTouchControls, isTouchDevice } from './touch.js';
 import { appearance } from '/shared/node-map.js';
-import { formatAge, formatBytesShort } from '/shared/derive.js';
+import { npcPlate } from '/shared/plate.js';
 
 const $ = (id) => document.getElementById(id);
 const STEP = 1 / 60;
 const PEER_TIMEOUT_MS = 2500;
 const FLASH_MS = 1600;
+
+// ---- 视角自适应（见 adaptiveFov / applyCameraBounds）----
+const BASE_FOV = 62;                      // 与 world.js 建相机时的初始 FOV 一致
+const REF_ASPECT = 16 / 9;                // 参考比例：这个比例下垂直 FOV 就是 BASE_FOV
+const MIN_FOV = 52, MAX_FOV = 76;         // 垂直 FOV 的上下限，别把画面拉变形
+const REF_DIAG = Math.hypot(1920, 1080);  // 参考视口对角线：1080p 桌面按 1.0 算，比它大就站远一点
 
 export function createFarm({ identity, onChangeIdentity, onExit } = {}) {
   let renderer, scene, camera, world, feathers, sfx, net, touch;
@@ -33,6 +39,7 @@ export function createFarm({ identity, onChangeIdentity, onExit } = {}) {
   const body = { x: 0, y: 0, z: 0, vy: 0, kx: 0, kz: 0 };
   let yaw = 0, peckT = 0, peckCd = 0, flapT = 0, flapCd = 0;
   let camYaw = 0.6, camPitch = 0.42, camDist = 5;
+  let distMin = 2.4, distMax = 9;   // 距离上下限按视口重算（applyCameraBounds）
   let dragging = false, dragMoved = 0, locked = false;
   let hp = CONF.maxHp, score = 0, ko = false, koStartT = 0;
   let lastIntended = ST.IDLE;   // 本帧「想走成什么样」：上报给别人与选动画都用它
@@ -51,19 +58,43 @@ export function createFarm({ identity, onChangeIdentity, onExit } = {}) {
   const identityRef = { ...identity };
 
   // ---------------- 相机 ----------------
+  /**
+   * 垂直 FOV：按「水平视角守恒」换算 —— 窄窗口/竖屏不再被挤成一条缝（水平看不到几只鸡），
+   * 超宽屏也不会因为水平视角过大把鸡压成小点。上下限只是防畸变，不是调节手感。
+   */
+  function adaptiveFov(aspect) {
+    const halfH = Math.tan((BASE_FOV * Math.PI / 180) / 2) * REF_ASPECT;
+    const v = 2 * Math.atan(halfH / Math.max(0.35, aspect)) * 180 / Math.PI;
+    return Math.max(MIN_FOV, Math.min(MAX_FOV, v));
+  }
+
+  /** 屏幕越大默认站得越远：小鸡场不该在大屏上只看到自己那一只。 */
+  function viewScale() {
+    return Math.max(0.85, Math.min(1.5, Math.hypot(innerWidth, innerHeight) / REF_DIAG));
+  }
+
+  /** 按当前视口重算缩放边界，并把 camDist 夹回范围内（滚轮改过的距离尽量留着）。 */
+  function applyCameraBounds() {
+    const s = viewScale();
+    distMin = (compact ? 3.2 : 2.4) * s;
+    distMax = (compact ? 11 : 14) * s;
+    camDist = Math.max(distMin, Math.min(distMax, camDist));
+    if (camera) camera.fov = adaptiveFov(innerWidth / innerHeight);
+    if (camera) camera.updateProjectionMatrix();
+  }
+
   function resize() {
     if (!renderer) return;
     compact = Math.min(innerWidth, innerHeight) < 720 || innerWidth < 820;
     renderer.setSize(innerWidth, innerHeight);
     renderer.setPixelRatio(compact ? Math.min(devicePixelRatio, 1.5) : Math.min(devicePixelRatio, 2));
     camera.aspect = innerWidth / innerHeight;
-    camera.updateProjectionMatrix();
-    camDist = Math.max(compact ? 3.2 : 2.4, Math.min(compact ? 11 : 9, camDist));
+    applyCameraBounds();
   }
 
   function updateCamera(dt) {
     camPitch = Math.max(0.06, Math.min(1.25, camPitch));
-    camDist = Math.max(compact ? 3.2 : 2.4, Math.min(compact ? 11 : 9, camDist));
+    camDist = Math.max(distMin, Math.min(distMax, camDist));
     // 相机挂在玩家身后：镜头看向的方向就是「前」，WASD 与触摸摇杆都相对它算
     camTarget.lerp(_t.set(body.x, body.y + 0.9, body.z), Math.min(1, dt * 14));
     const cp = Math.cos(camPitch), sp = Math.sin(camPitch);
@@ -314,33 +345,6 @@ export function createFarm({ identity, onChangeIdentity, onExit } = {}) {
     return p;
   }
 
-  function npcPlate(meta) {
-    const title = `${meta.kind === 'web' ? '网站鸡' : '探针鸡'}·${meta.name}`;
-    let sub;
-    if (meta.kind === 'web') {
-      if (meta.offline) sub = meta.reason ? `网站离线 ${meta.reason}` : '网站在线';
-      else if (meta.latency == null) sub = '检测网站中…';
-      else sub = `网站在线 ${meta.latency}ms`;
-    } else if (meta.offline) {
-      sub = meta.state === ST.SLEEP ? '未接入探针' : '离线';
-    } else {
-      const bits = [];
-      // 服务端的异常标签（逃跑中 / 流量超限 / 告警…）优先显示，正常时不给噪音
-      if (meta.label && meta.label !== '正常') bits.push(meta.label);
-      if (meta.up != null) bits.push(`在线 ${formatAge(meta.up)}`);
-      if (meta.netOut != null) bits.push(`↑${formatBytesShort(meta.netOut)} ↓${formatBytesShort(meta.netIn)}`);
-      sub = bits.join(' · ');
-    }
-    return {
-      title, sub, flag: meta.country,
-      // 服务端广播的 hp/maxHp：探针鸡被啄之后血条要真的掉下去
-      hp: meta.maxHp ? Math.max(0, Math.min(1, meta.hp / meta.maxHp)) : (meta.ko ? 0 : 1),
-      cpu: meta.cpu, mem: meta.mem,
-      offline: meta.offline,
-      gauges: meta.kind === 'probe' && !meta.offline,
-    };
-  }
-
   function ensureNpc(id, meta) {
     let n = npcs.get(id);
     if (!n) {
@@ -483,6 +487,13 @@ export function createFarm({ identity, onChangeIdentity, onExit } = {}) {
       const special = s.st === ST.DEAD || s.st === ST.SLEEP || s.st === ST.ALERT || s.st === ST.PECK;
       const speedNow = moved > 0.4 ? (moved > CONF.walkSpeed * 1.15 ? ST.RUN : ST.WALK) : ST.IDLE;
       n.chicken.setState(special ? s.st : speedNow, meta.tone);
+      // 姿态来自每帧的实时采样，牌面来自低频的名册消息 —— 两者会差一拍。
+      // 差这一拍就会出现「鸡已经躺下、牌子还写着在线」的两个状态叠在一起，
+      // 所以活着/倒下的判定以实时姿态为准，牌面跟着姿态走。
+      const liveDown = s.st === ST.DEAD || s.st === ST.SLEEP;
+      if (liveDown !== (!!meta.offline || meta.state === ST.DEAD || meta.state === ST.SLEEP)) {
+        n.chicken.setPlate(npcPlate({ ...meta, state: s.st, offline: liveDown }));
+      }
       n.chicken.update(dt, speedNow === ST.WALK || speedNow === ST.RUN);
     }
     for (const [id, n] of npcs) {
@@ -644,8 +655,10 @@ export function createFarm({ identity, onChangeIdentity, onExit } = {}) {
     mount() {
       if (mounted) return;
       compact = Math.min(innerWidth, innerHeight) < 720 || innerWidth < 820;
-      if (compact) camDist = 6.4;
+      // 默认比原来站得远一截：贴着一只鸡看，看不到整片场子
+      camDist = (compact ? 6.8 : 7.6) * viewScale();
       camPitch = compact ? 0.58 : 0.42;
+      applyCameraBounds();
 
       renderer = new THREE.WebGLRenderer({ antialias: !compact, powerPreference: 'high-performance' });
       renderer.setPixelRatio(compact ? Math.min(devicePixelRatio, 1.5) : Math.min(devicePixelRatio, 2));
@@ -654,6 +667,7 @@ export function createFarm({ identity, onChangeIdentity, onExit } = {}) {
 
       const built = buildScene(renderer, { lowPower: compact });
       scene = built.scene; camera = built.camera;
+      resize();                       // 首帧就用上自适应 FOV 与距离，不必等用户改窗口大小
       world = buildWorld(scene, { lowPower: compact });
       feathers = createFeathers(scene);
       sfx = createSfx();
@@ -682,7 +696,7 @@ export function createFarm({ identity, onChangeIdentity, onExit } = {}) {
         yaw: +yaw.toFixed(3), camYaw: +camYaw.toFixed(3),
         frames: frameSeq,
         locked, dragging,
-        camYaw: +camYaw.toFixed(4), camPitch: +camPitch.toFixed(4), camDist: +camDist.toFixed(2),
+        camYaw: +camYaw.toFixed(4), camPitch: +camPitch.toFixed(4), camDist: +camDist.toFixed(2), fov: +camera.fov.toFixed(2),
         lastEvent: lastEvent ? { k: lastEvent.k, to: lastEvent.to, npc: !!lastEvent.npc, knock: lastEvent.knock } : null,
         meState: me ? me.state : null,
         meYaw: me ? +me.root.rotation.y.toFixed(4) : null,
