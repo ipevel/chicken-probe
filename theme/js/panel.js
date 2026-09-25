@@ -384,7 +384,7 @@ export function createPanel({ onEnterFarm } = {}) {
     add('运行时长', m?.uptime != null ? formatAge(m.uptime) : '—');
     if (staleFor(node, now)) add('读数停止', `${formatAge(staleFor(node, now))}前`);
 
-    const dl = el('dl', 'facts');
+    const dl = el('dl', 'facts drawer-facts');
     for (const [k, v] of rows) dl.append(el('dt', null, k), el('dd', null, v));
     return dl;
   }
@@ -632,6 +632,13 @@ export function createPanel({ onEnterFarm } = {}) {
     const body = el('div', 'body');
     body.append(tabs, ranges, stamp, chartsArea(node), facts(node, now));
 
+    // 详情页已打开且是同一节点：只更新实时 facts，不重建抽屉（否则滚动位置丢失）
+    const existing = drawer.querySelector('.drawer-facts');
+    if (existing && state.open === node.id && !refresh) {
+      existing.replaceWith(facts(node, now));
+      drawer.classList.remove('closed');
+      return;
+    }
     drawer.replaceChildren(head, body);
     drawer.classList.remove('closed');
 
@@ -666,7 +673,7 @@ export function createPanel({ onEnterFarm } = {}) {
     renderChips();
     renderCountryOptions();
     renderList();
-    if (state.open != null) renderDrawer();
+    if (state.open != null) renderDrawer({ refresh: false });
   }
 
   function setConn(stateName, detail) {

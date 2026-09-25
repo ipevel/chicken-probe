@@ -40,7 +40,15 @@ await rm(OUT, { recursive: true, force: true });
 await mkdir(DIST, { recursive: true });
 
 // dist 的布局就是 hub 站点根目录的布局：/js、/shared、/vendor、/style.css、/index.html
-await cp(join(THEME, 'index.html'), join(DIST, 'index.html'));
+// 版本号：每次构建用时间戳，注入到 index.html 的静态资源 URL，强制浏览器刷新缓存
+const VERSION = String(Date.now());
+let indexHtml = await readFile(join(THEME, 'index.html'), 'utf8');
+indexHtml = indexHtml
+  .replace('href="/style.css"', `href="/style.css?v=${VERSION}"`)
+  .replace('src="/js/main.js"', `src="/js/main.js?v=${VERSION}"`)
+  .replace('"three": "/vendor/three.module.js"', `"three": "/vendor/three.module.js?v=${VERSION}"`)
+  .replace('href="/vendor/three.module.js"', `href="/vendor/three.module.js?v=${VERSION}"`);
+await writeFile(join(DIST, 'index.html'), indexHtml);
 await cp(join(THEME, 'style.css'), join(DIST, 'style.css'));
 await cp(join(THEME, 'theme.json'), join(DIST, 'theme.json'));
 await cp(join(THEME, 'js'), join(DIST, 'js'), { recursive: true });
