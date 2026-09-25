@@ -688,7 +688,10 @@ export function createPanel({ onEnterFarm } = {}) {
   }
 
   function setSiteName(name) {
-    if (name) $('site-name').textContent = `🐔 ${name}`;
+    if (name) {
+      $('site-name').textContent = `🐔 ${name}`;
+      document.title = name;  // 浏览器标签页标题用后台的网站名，不用预设的"养鸡探针"
+    }
   }
 
   function init() {
