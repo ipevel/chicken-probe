@@ -48,6 +48,8 @@ await cp(join(ROOT, 'shared'), join(DIST, 'shared'), { recursive: true });
 await mkdir(join(DIST, 'vendor'), { recursive: true });
 // three 从 node_modules 复制：仓库里不存 1.2MB 的第三方库副本
 await cp(join(THREE_BUILD, 'three.module.js'), join(DIST, 'vendor', 'three.module.js'));
+// three.module.js 依赖 three.core.js（three 的模块化拆分），漏了会导致浏览器动态 import 失败、鸡场进不去
+await cp(join(THREE_BUILD, 'three.core.js'), join(DIST, 'vendor', 'three.core.js'));
 
 const files = await walk(DIST);
 const unpacked = files.reduce((s, f) => s + f.size, 0);
@@ -62,6 +64,7 @@ if (unpacked > MAX_UNPACKED) problems.push(`解压后超 64MiB`);
 if (!files.some(f => f.rel === 'index.html')) problems.push('缺 dist/index.html');
 if (!files.some(f => f.rel === 'theme.json')) problems.push('缺 theme.json');
 if (!files.some(f => f.rel === 'vendor/three.module.js')) problems.push('缺 vendor/three.module.js');
+if (!files.some(f => f.rel === 'vendor/three.core.js')) problems.push('缺 vendor/three.core.js（three.module.js 的依赖，漏了鸡场进不去）');
 if (!files.some(f => f.rel === 'shared/physics.js')) problems.push('缺 shared/physics.js（客户端按根路径引用它）');
 for (const f of files) {
   if (/\s/.test(f.rel)) problems.push(`文件名含空格，hub 的静态服务要按 URL 编码处理：${f.rel}`);
