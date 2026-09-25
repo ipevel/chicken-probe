@@ -1,0 +1,8 @@
+{
+  "name": "Chicken Farm",
+  "short": "chicken-farm",
+  "description": "监控为主、鸡场彩蛋：节点即探针鸡，能走进去互相啄",
+  "version": "0.1.0",
+  "author": "ipevel",
+  "url": "https://github.com/ipevel/chicken-probe"
+}

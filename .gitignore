@@ -1,0 +1,16 @@
+# 依赖与构建产物：仓库里只放源码，装依赖 / 打包各自现做
+node_modules/
+build/
+
+# 本地开发与验证产物：截图、探针输出、日志，都不该进仓库
+.shots/
+*.log
+
+# 本地配置：里面是本机的主控地址与网站列表，用它自己的 example 起步
+server/config.json
+
+# 编辑器/系统
+.DS_Store
+.idea/
+.vscode/
+*.swp

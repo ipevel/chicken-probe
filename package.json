@@ -1,0 +1,26 @@
+{
+  "name": "chicken-probe",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Monitor 探针主题：打开是面板，点进 3D 鸡场 —— 节点即探针鸡，多人同屏能互相啄",
+  "scripts": {
+    "dev": "node server/dev.js",
+    "room": "node server/index.js --config server/config.json",
+    "test": "node --test test/*.test.js",
+    "smoke": "node tools/smoke.mjs",
+    "build:theme": "node tools/build-theme.mjs",
+    "build:dist": "node tools/build-theme.mjs --no-tar",
+    "probe:drift": "node tools/drift-probe.mjs",
+    "probe:motion": "node tools/motion-probe.mjs",
+    "probe:action": "node tools/action-probe.mjs",
+    "probe:panel": "node tools/panel-probe.mjs"
+  },
+  "dependencies": {
+    "three": "^0.180.0",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

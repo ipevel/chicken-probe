@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<!-- viewport-fit=cover：让 CSS 的 env(safe-area-inset-*) 在刘海屏生效；
+     user-scalable=no：鸡场里捏合会连整个画布一起缩掉，禁掉缩放 -->
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#9fd08a">
+<meta name="mobile-web-app-capable" content="yes">
+<title>养鸡探针</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐔</text></svg>">
+<link rel="stylesheet" href="/style.css">
+<script>
+  // 亮暗在首屏前定好：放在 effect 里会让暗色访客每次加载闪一下白
+  (() => {
+    const key = 'chicken-probe:theme';
+    const saved = localStorage.getItem(key);
+    const dark = saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.classList.toggle('dark', dark);
+  })();
+</script>
+<script type="importmap">{ "imports": { "three": "/vendor/three.module.js" } }</script>
+<link rel="modulepreload" href="/vendor/three.module.js">
+</head>
+<body>
+<div id="boot">🐔 鸡场加载中…</div>
+
+<!-- ============ 监控面板：主题的主界面 ============ -->
+<main id="panel" class="panel">
+  <header class="top">
+    <h1 id="site-name">🐔 养鸡探针</h1>
+    <span id="conn" class="conn" title="数据连接状态">连接中</span>
+    <div class="top-actions">
+      <button id="farm-btn" class="ghost" type="button" title="走进 3D 鸡场，节点即鸡">🐔 进鸡场</button>
+      <button id="theme-btn" class="ghost icon" type="button" title="亮/暗切换">◐</button>
+    </div>
+  </header>
+
+  <section id="summary" class="summary" aria-label="总览"></section>
+
+  <section class="controls">
+    <div id="chips" class="chips" role="tablist" aria-label="状态筛选"></div>
+    <select id="country" aria-label="地区筛选"><option value="">全部地区</option></select>
+    <select id="sort" aria-label="排序"></select>
+    <input id="q" type="search" placeholder="搜索名称或地区" aria-label="搜索">
+    <div class="viewtoggle">
+      <button data-view="grid" type="button" title="网格">▦</button>
+      <button data-view="list" type="button" title="列表">☰</button>
+    </div>
+  </section>
+
+  <section id="grid" class="grid" aria-live="polite"></section>
+  <p id="empty" class="empty hidden">没有符合条件的机器</p>
+</main>
+
+<!-- ============ 鸡场：3D 视图，节点鸡就是被监控的机器 ============ -->
+<div id="farm" class="farm hidden">
+  <div id="app"></div>
+
+  <!-- HUD：整层不吃指针，只有 #hud-top 里的按钮/#board/#me 自己开 pointer-events -->
+  <div id="hud">
+    <div id="hud-top">
+      <div class="hud-stats">
+        <span>🐔 探针鸡 在线 <b id="online">0</b></span>
+        <span>🌐 网站鸡 在线 <b id="web-online">0</b></span>
+        <span>👤 访客 <b id="visitors">0</b></span>
+      </div>
+      <button id="back-btn" type="button">← 回面板</button>
+      <span id="room-state" class="conn" title="联机状态">单机</span>
+    </div>
+
+    <div id="board">
+      <h3 id="board-title">🐔 啄倒榜</h3>
+      <div id="board-rows"></div>
+    </div>
+
+    <div id="feed"></div>
+
+    <div id="me">
+      <div id="me-line">
+        <span id="me-name"></span>
+        <button id="me-edit" type="button" title="改名字">✏️</button>
+      </div>
+      <div id="me-name-editor" class="hidden">
+        <div id="me-name-row">
+          <input id="me-name-input" maxlength="24" placeholder="名字（≤8个汉字）">
+          <button id="me-name-ok" type="button">确定</button>
+        </div>
+      </div>
+      <div id="hpbar"><div id="hpfill"></div></div>
+      <div id="score">分数 0</div>
+    </div>
+
+    <div id="hint-desktop" class="hint">WASD 移动 · Shift 疾跑 · 空格 跳 · 拖动鼠标转视角（点一下可锁定）· 左键/E 啄 · 右键/F 扇翅 · 滚轮 缩放 · M 静音</div>
+    <div id="hint-touch" class="hint">左摇杆移动（推到底疾跑）· 拖屏幕转视角 · 轻点啄 · 右侧按钮啄/疾跑/跳</div>
+  </div>
+
+  <!-- 触屏件：容器不吃手势，控件自己吃（空白处拖动仍是转视角） -->
+  <div id="touch-ui">
+    <div class="tc-stick">
+      <div class="tc-stick-ring"></div>
+      <div class="tc-stick-knob"></div>
+    </div>
+    <div class="tc-actions">
+      <button class="tc-btn tc-btn-peck" type="button" title="啄">啄</button>
+      <button class="tc-btn tc-btn-run" type="button" title="疾跑（可切换）">跑</button>
+      <button class="tc-btn tc-btn-jump" type="button" title="跳">跳</button>
+    </div>
+  </div>
+
+  <!-- 倒地横幅：靠 .show 淡入淡出，不是 .hidden -->
+  <div id="ko-banner"></div>
+</div>
+
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>

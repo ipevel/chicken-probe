@@ -1,0 +1,11 @@
+{
+  "hub": "http://127.0.0.1:9911",
+  "port": 7789,
+  "path": "/ws",
+  "host": "127.0.0.1",
+
+  "websites": [
+    { "name": "公司官网", "url": "https://example.com" },
+    { "name": "API 健康页", "url": "https://api.example.com/healthz" }
+  ]
+}
