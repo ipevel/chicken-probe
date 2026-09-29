@@ -62,12 +62,17 @@ jobs:
           cache: npm
       - name: 安装依赖
         run: npm ci --omit=dev
+      # build:theme（不带 --no-tar）才会出 theme.tar.gz —— 这正是要传进
+      # hub 面板「主题 → 上传」的那个文件。之前这里写成 build:dist（等于
+      # --no-tar），却又断言 tar 存在，CI 必然在这一步失败。
       - name: 打包主题
-        run: npm run build:dist
+        run: npm run build:theme
       - name: 确认主题包生成
         run: |
           test -f build/theme.tar.gz
           ls -lh build/theme.tar.gz
+          # 顺带确认许可证声明真的进了包 —— 再分发 three.js 是硬条件
+          tar tzf build/theme.tar.gz | grep -q 'THIRD_PARTY_NOTICES.md'
       - name: 上传主题包
         uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4.5.0
         with:
