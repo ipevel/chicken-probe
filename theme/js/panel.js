@@ -827,9 +827,8 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
 
   function setSiteName(name) {
     if (name) {
-      // 只写文字那一层：#site-name 现在是「图标 + span」，
-      // 直接写它的 textContent 会把图标一起删掉（而且不报错）
-      $('site-name-text').textContent = name;
+      // 直接写 h1 的 textContent：站点名是纯文字，没有图标分层了
+      $('site-name').textContent = name;
       document.title = name;  // 浏览器标签页标题用后台的网站名，不用预设的"养鸡探针"
     }
   }

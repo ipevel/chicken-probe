@@ -180,12 +180,13 @@ button, select, input { font: inherit; color: inherit; }
   }
 }
 
-/* 图标：颜色永远来自 currentColor。
-
 .ghost {
   background: var(--paper); border: 1px solid var(--line-control); color: var(--ink);
   border-radius: var(--r-sm); padding: 7px 12px; cursor: pointer;
   display: inline-flex; align-items: center; gap: 6px;
+  /* .ghost 也用在 <a> 上（管理入口），链接的默认色与下划线要一并压掉，
+     否则那颗按钮和旁边的 <button> 长得不一样。 */
+  text-decoration: none; font: inherit;
   transition: border-color var(--dur-1), background var(--dur-1);
 }
 .ghost:hover { border-color: var(--line-control-hover); background: var(--accent-soft); }
@@ -198,7 +199,6 @@ button, select, input { font: inherit; color: inherit; }
 
 .top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .top h1 {
-  display: inline-flex; align-items: center; gap: 6px;
   font-size: 17px; margin: 0; font-weight: 600; letter-spacing: .2px;
 }
 .top-actions { margin-left: auto; display: flex; gap: 8px; }
