@@ -5,6 +5,7 @@
 
 import { createPanel, loadSettings } from './panel.js';
 import { createHub } from './data.js';
+import { iconIdOf } from '/shared/icon-name.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -23,13 +24,26 @@ const panel = createPanel({
   settings,
 });
 
+/**
+ * 本地存的 icon 可能是老版本留下的鸡头 emoji，而协议字段只收「符号名或 1–2 字可见文本」
+ * （见 server/room.js 的 clipped），所以这里折成协议名：
+ *   命中「整只鸡」→ 'chicken'（7 个字符，在服务端的长度上限内）；
+ *   命中品牌鸡头 → 'logo'；
+ *   iconIdOf 返回 null（1–2 个可见字）→ 原样留着，那种名字是要当文字画的。
+ */
+function iconNameOf(raw) {
+  const id = iconIdOf(raw);
+  if (id == null) return String(raw).trim();
+  return id === 'i-logo' ? 'logo' : 'chicken';
+}
+
 /** 玩家身份存本机：联机时随 hello 报给房间，断线重连回来还是同一只鸡。 */
 function loadIdentity() {
   try {
     const raw = JSON.parse(localStorage.getItem('chicken-probe:me') || 'null');
-    if (raw && typeof raw.name === 'string' && raw.name) return { name: raw.name, icon: raw.icon || '🐔' };
+    if (raw && typeof raw.name === 'string' && raw.name) return { name: raw.name, icon: iconNameOf(raw.icon) };
   } catch { /* 存坏了就当没存过 */ }
-  return { name: `访客${Math.floor(Math.random() * 90 + 10)}`, icon: '🐔' };
+  return { name: `访客${Math.floor(Math.random() * 90 + 10)}`, icon: 'chicken' };
 }
 
 const hub = createHub({

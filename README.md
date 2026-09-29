@@ -231,6 +231,8 @@ export const ROOM_PATH = '/room/ws';
 | `theme/js/panel.js` | `SPARK_CONCURRENCY` / `SPARK_LIMIT` | 卡片迷你曲线的并发数与总量限流 |
 | `shared/physics.js` | `CONF.*` | 走速/重力/啄击/击退/连跳等玩法数值（与参考站对齐） |
 | `server/npcs.js` | `FLEE_*` / `WALK_SPEED` | 节点鸡的闲逛与残血逃跑行为 |
+| `theme/style.css` | `--board-max` / `--board-min` | 顶栏给榜单让位的带宽。`--board-max`（`145px`）管 ≤560px 档，`--board-min`（`220px`）管 561–660px 档；两档各自的 `#board` 宽度上限与 `#hud-top` 的 `right` **共用同一个 token，别只改一处** |
+| `tools/hud-top-verdict.mjs` | `validateSample()` | 窄屏探针的判定：视口读回值须等于请求值、`#farm` 须可见、参与比对的矩形不得退化 —— 任一不成立即判该档无效（退出码 2），**不拿假绿灯当结论** |
 
 ### 3.3 面板的数据从哪来
 
@@ -322,16 +324,87 @@ msedge --headless=new --enable-unsafe-swiftshader --use-angle=swiftshader \
   （所以不会掉头往你这边走回来）。逃跑有 **6 秒冷却**，追着打的人总有机会补上一口。
   位置始终是每 1/10 秒推进一次、客户端插值渲染，不是瞬移。
 
-## 七、目录结构
+## 七、图标体系（SVG sprite 内联）
+
+界面上的图标统一来自 `theme/index.html` 里**内联**的一份 sprite：23 个 `<symbol>`，
+用 `<svg class="i i-20"><use href="#i-x"></use></svg>` 引用。三维鸡场里画在名牌上的那几个
+走同一条来源，只是换成 canvas 画（`drawIcon`）。下面三点是新增或替换图标时一定会碰到的。
+
+### 7.1 为什么内联在 `theme/index.html`，不做成外部的 `icons.svg`
+
+跨文档引用（`<use href="icons.svg#i-x">`）时，`currentColor` 与 CSS 变量的继承**不可靠** ——
+图标拿不到外层的文字颜色，**亮/暗主题切换时图标不跟着变色**。而「暗色下图标跟着变色」是硬要求。
+内联因此是**功能性选择**而不是打包偏好：代价是 `index.html` 大一点，换来零外链、离线可用、
+不增加请求数，以及让 `currentColor` 像普通子元素一样正常继承。
+
+### 7.2 表现属性必须写在每个 `<symbol>` 自己身上
+
+`fill` / `stroke` / `stroke-width` / `linecap` / `linejoin` 这五个**不能**写在根 `<svg>` 上靠继承。
+`<use>` 的 shadow tree 继承链是「**use 元素 + 文档祖先**」，**不包含 symbol 的祖先** ——
+写在根 `<svg>` 上，符号内部根本继承不到。
+
+失效表现极隐蔽：**全部描边符号渲染成实心黑块，而且不报任何错** —— 不缺图标、尺寸对、颜色对，
+只有形状全错。本类改造里这是最典型的静默故障。
+
+→ 所以新增图标时，把这五个属性抄到新 `<symbol>` 自己身上，不要依赖外层的 `stroke` 设置。
+
+### 7.3 `icon` 字段的三级降级（`shared/icon-name.js`）
+
+联机协议里的 `icon` 是**自由字符串**，服务端**不解读**它：`server/room.js` 只按**码点**裁剪
+（`clipped`，不按 UTF-16 单元切，避免切在代理对中间），空值兜成 `'chicken'`，然后原样广播。
+
+**映射收在客户端一处** —— `iconIdOf()`：
+
+| 输入 | 结果 |
+|---|---|
+| 命中别名表（`chicken` / `logo` / `cat` / `U+1F414` …） | 对应的符号 id |
+| 1–2 个**非 emoji** 的可见字符（例：`甲`） | **`null` = 当文字画**，保留用户个性化 |
+| 其它（emoji / 空 / 过长 / 控制字） | 兜底 `i-chicken` —— **永不把 emoji 画到界面上** |
+
+`iconIdOf()` **会返回 `null`**，所以每个调用点都要处理两种情况：DOM 侧用 `theme/js/icons.js`
+的 `iconEl()`（内部兜成鸡头），三维名牌侧自己降级成纯文字（`shared/plate.js`）。
+
+> 别名表里有一条 `'\\u{1F414}' → i-chicken`：0.4.0 之前的客户端把 emoji 原样存进这个字段
+> 并原样发给服务端，所以这条得留着。也正因为降级收在客户端，**服务端不需要任何兼容分支**。
+
+### 7.4 图标编辑链路（改一个图标要走完的完整路径）
+
+**运行时的唯一源头是 `theme/index.html` 里那段内联 sprite，不是任何单个文件。**
+`docs/icons/sprite.svg` 是设计侧的可读源头，`theme/index.html` 是**被内联进去的副本** ——
+两者必须逐 `<path d>` 一致，否则界面用的是旧图标。`test/sprite.test.js` 会逐个路径比对，
+所以这条链路是**被测试焊死的**，不是靠人记得。
+
+改一个图标的完整步骤：
+
+1. 改 `docs/icons/sprite.svg` 里对应 `<symbol>` 的 `<path d>`（保留 `viewBox="0 0 24 24"`
+   与自己的 `fill`/`stroke` 表现属性 —— 见 7.2）。
+2. 把改动**同步进 `theme/index.html` 的内联 sprite**。这一步目前是手工同步：
+   仓库里没有自动内联脚本（设计期的 `compare-sprite.mjs` 在 `.shots/`，**不进仓库**），
+   `npm run build:theme` 只做打包与缓存击穿，**不会**重新内联 sprite。
+3. 跑 `npm test`。`test/sprite.test.js` 会核对：
+   - 内联 sprite 与 `docs/icons/sprite.svg` 的**符号集合、顺序、逐条 `<path d>`、`viewBox`** 完全一致；
+   - 每个 `<symbol>` **自带**表现属性（防「写在根 `<svg>` 上 → 全黑块」，见 7.2）；
+   - 全仓 `<use href="#x">` 无悬空引用；
+   - 代码里传给 `iconEl()` / `iconPath()` / `drawIcon()` 的图标名都能真解析到符号
+     （防 `'sound-off'` 被静默兜成鸡头这类问题）；
+   - `README` 里这个「23 个 `<symbol>`」的数字与实测一致。
+4. 若新增/删除图标，同步改本节的数字与 7.3 的别名表（如果涉及协议名）。
+
+`docs/icons-preview.html` 是单文件、零外链的核对页：把 23 个符号放在 4 档底色上各画一遍，
+用来肉眼确认「没有黑块」。它不参与构建，直接双击打开即可。
+
+## 八、目录结构
 
 ```
 chicken-probe/
 ├── theme/            主题源码（打包后交给 hub 托管）
-│   ├── index.html    面板 + 鸡场的 DOM
+│   ├── index.html    面板 + 鸡场的 DOM（含内联的图标 sprite，见第七章）
 │   ├── style.css     两套配色的样式（面板 + 鸡场 HUD）
 │   ├── theme.json    主题清单（name / short / version / url）
-│   └── js/           面板、数据层、历史图表、鸡场、网络、音效、触屏
-├── shared/           客户端与服务端共用：物理、状态判定、节点→鸡映射、插值、图表数学
+│   └── js/           面板、数据层、历史图表、鸡场、网络、音效、触屏（16 个模块）
+│       └── icons.js  图标入口：DOM 用 iconEl()，canvas 用 iconPath() / drawIcon()
+├── shared/           客户端与服务端共用：物理、状态判定、节点→鸡映射、插值、图表数学、图标名映射（7 个模块）
+│   └── icon-name.js  协议图标名 → 符号 id 的映射，可返回 null 表示「当文字画」
 ├── server/           联机服务
 │   ├── index.js      生产入口（--hub / --port / --config …）
 │   ├── dev.js        本地开发服务器（假 hub + 联机房 + 静态托管）
@@ -339,11 +412,19 @@ chicken-probe/
 │   ├── npcs.js       探针鸡/网站鸡（服务端权威，含残血逃跑与主动啄人）
 │   ├── sources.js    数据源：读 hub 节点 + 探测网站
 │   └── probe.js      假探针数据（仅本地开发，不进主题包）
-├── tools/            打包脚本与五个交互探针
+├── tools/            打包脚本、交互探针与探针判定模块
+│   ├── build-theme.mjs     打包主题（含缓存击穿）
+│   ├── smoke.mjs           端到端冒烟
+│   ├── *-probe.mjs         交互探针（drift / motion / action / panel / flee / hud-top）
+│   └── hud-top-verdict.mjs 窄屏探针的判定纯函数（被探针与单测共用，可独立自证）
+├── docs/             设计文档与图标源头
+│   ├── visual-refresh-20260929*.md   三份视觉改造规格（含可执行判据）
+│   ├── icons/sprite.svg              图标设计源头（运行时源头是 index.html 内联副本，见 7.4）
+│   └── icons-preview.html            单文件零外链的图标核对页
 └── test/             单测（node:test）
 ```
 
-## 八、许可与致谢
+## 九、许可与致谢
 
 MIT License，见 [LICENSE](LICENSE)。
 

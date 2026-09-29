@@ -43,7 +43,7 @@ function cleanName(raw) {
   return out;
 }
 
-/** 图标只收短字符串（emoji），别让人往别人的界面里塞长文本或标签。 */
+/** 图标只收符号名或 1–2 字可见文本，别让人往别人的界面里塞长文本或标签。 */
 function clipped(v) {
   if (typeof v !== 'string') return '';
   const s = v.replace(/[\u0000-\u001f\u007f-\u009f<>]/gu, '').replace(/\p{Cf}/gu, '');
@@ -145,7 +145,7 @@ export function attachRoom(httpServer, { path = '/ws', now = () => Date.now(), n
       id: randomUUID().slice(0, 8),
       token: null,
       name: '',
-      icon: '🐔',
+      icon: 'chicken',
       ws,
       x: 0, y: 0, z: 0, yaw: 0, st: ST.IDLE,
       hp: CONF.maxHp,
@@ -175,7 +175,8 @@ export function attachRoom(httpServer, { path = '/ws', now = () => Date.now(), n
         if (p.hello) return;
         p.hello = true;
         const name = cleanName(m.name) || `访客${p.id.slice(0, 4)}`;
-        const icon = clipped(m.icon) || '🐔';
+        // 老客户端发来的 '🐔' 由客户端的 iconIdOf 兜住，服务端不需要兼容分支
+        const icon = clipped(m.icon) || 'chicken';
         const claimed = typeof m.token === 'string' ? byToken.get(m.token) : null;
 
         if (claimed && peers.has(claimed)) {

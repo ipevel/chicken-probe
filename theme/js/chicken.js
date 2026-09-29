@@ -7,7 +7,10 @@
 
 import * as THREE from 'three';
 import { ST, CONF } from '/shared/physics.js';
+import { drawIcon } from './icons.js';
 
+// 喙/脚是固定的橙、冠/肉垂是固定的红：这是参考站的规矩（同一只鸡在任何配色下
+// 都要一眼认得出来是鸡），所以它们不参与 PALETTES 的毛色推导，也别顺手让它们跟着变。
 const ORANGE = 0xd98a2b;          // 喙 / 脚，固定不随毛色变
 const RED = 0xc93434;             // 冠 / 肉垂
 const EYE = 0x1a1a1a;
@@ -28,6 +31,11 @@ const PALETTES = [
 
 // 名牌的四套版式。数字全是参考站的实测值：画布尺寸、sprite 缩放与高度、
 // 字号、血条的 x/宽/高。改这里等于改全场的观感，所以集中放一处。
+//
+// 版式规则（写出来免得下次又要从代码里反推）：
+//   · 血条恒为 x=14、宽 W-28、圆角 = 高÷2、轨色 rgba(255,255,255,.15)，填充从 x=14 起、最小宽 = 高；
+//   · 圆环半径 probe=20、其余 16，圆心 y = 标题基线 - 6，从右侧 W-34 往左排；
+//   · 名字留白按版式给（drawPlate 里的 maxW），加了国旗/图标位之后从 x0 里扣，不另算一套。
 const PLATES = {
   player: { w: 256, h: 76, sx: 1.5, sy: 0.45, y: 1.16, title: 21, sub: 13, barH: 9, barY: 60, titleY: 30, subY: 52, flagW: 30, flagH: 20 },
   probe: { w: 380, h: 170, sx: 2.9, sy: 1.3, y: 1.45, title: 22, sub: 14, barH: 7, barY: 140, titleY: 56, subY: 90, flagW: 34, flagH: 24 },
@@ -268,7 +276,8 @@ export class Chicken {
   }
 
   /**
-   * 名牌内容。data: {title, sub, flag, hp, cpu, mem, offline, gauges}
+   * 名牌内容。data: {title, sub, flag, iconId, hp, cpu, mem, offline, gauges}
+   * iconId 是已经折好的符号 id（'i-chicken' / 空），见 shared/icon-name.js。
    * 只有内容真的变了才重画 canvas：重画 = 一次光栅化 + 一次纹理上传，
    * 每帧重画在手机上直接掉帧，而探针指标千分位抖动本来就不值得反映到牌子上。
    */
@@ -276,6 +285,9 @@ export class Chicken {
     const title = String(data.title ?? '');
     const sub = data.sub ? String(data.sub) : '';
     const flag = /^[a-zA-Z]{2}$/.test(String(data.flag || '')) ? String(data.flag) : '';
+    // 图标位：canvas 里画不了 emoji（各端字号字形都不同），所以标题只放名字，
+    // 图标名单独走这条字段。空字符串 = 不画。
+    const iconId = data.iconId ? String(data.iconId) : '';
     const hp = Number.isFinite(data.hp) ? clamp01(data.hp) : null;
     const cpu = Number.isFinite(data.cpu) ? clamp01(data.cpu) : null;
     const mem = Number.isFinite(data.mem) ? clamp01(data.mem) : null;
@@ -283,7 +295,7 @@ export class Chicken {
     const offline = !!data.offline;
 
     const sig = [
-      this.kind, offline ? 1 : 0, title, sub, flag, gauges ? 1 : 0,
+      this.kind, offline ? 1 : 0, title, sub, flag, iconId, gauges ? 1 : 0,
       hp == null ? '-' : hp.toFixed(2),
       cpu == null ? '-' : cpu.toFixed(2),
       mem == null ? '-' : mem.toFixed(2),
@@ -291,7 +303,7 @@ export class Chicken {
     if (sig === this.plateSig) return;
     this.plateSig = sig;
     this.offline = offline;
-    this.drawPlate({ title, sub, flag, hp, cpu, mem, gauges, offline });
+    this.drawPlate({ title, sub, flag, iconId, hp, cpu, mem, gauges, offline });
   }
 
   /** 受击红闪：给躯干加自发光再自己衰减，比叠一层贴图便宜，也不影响别的鸡。 */
@@ -300,7 +312,23 @@ export class Chicken {
     this.matBody.emissive.setHex(0x882222);
   }
 
-  drawPlate({ title, sub, flag, hp, cpu, mem, gauges, offline }) {
+  /**
+   * 名牌画布。canvas 不认 CSS 变量，所以这里的颜色只能写字面量 ——
+   * 但每一个都对应样式表里的一条 token，改色时必须成对改（括号里就是对应的 token）：
+   *
+   *   牌底（在线） rgba(14,22,10,.80)   → --farm-haze-strong
+   *   牌底（离线） rgba(28,28,30,.82)   → 无彩色，与 --farm-off 呼应
+   *   离线描边     rgba(255,212,202,.55) → --farm-bad
+   *   标题        #ffffff               → --farm-ink
+   *   副行        #dbe4d5               → --farm-ink-dim（原来是 .72 白：把对比度交给背景决定）
+   *   血条填充     #c0eb96/#ffd98a/#ffd4ca → --farm-good / --farm-warn / --farm-bad
+   *   圆环         #c0eb96 / #6fb3e8    → --farm-good / --m-mem 的暗色档
+   *
+   * 判据：名牌是「深色玻璃上的小字」（13–14px 画在 76–170px 的画布上再被 sprite 缩放），
+   * 所以它该用 HUD 的暗底那一套，而不是面板的浅底那一套 —— 同一指标两组颜色不是错，
+   * 错的是两边取同一个 hex；正确的是语义 token 相同、由底色决定具体色值。
+   */
+  drawPlate({ title, sub, flag, iconId, hp, cpu, mem, gauges, offline }) {
     const L = offline ? PLATE_OFFLINE : PLATES[this.kind] || PLATES.player;
     if (!this.ensurePlate(L.w, L.h, L.sx, L.sy, L.y)) return;
     const ctx = this.plateCtx;
@@ -308,11 +336,11 @@ export class Chicken {
     ctx.clearRect(0, 0, W, H);
 
     roundRect(ctx, 1, 1, W - 2, H - 2, 14);
-    ctx.fillStyle = offline ? 'rgba(28,28,30,0.78)' : 'rgba(15,25,10,0.55)';
+    ctx.fillStyle = offline ? 'rgba(28,28,30,0.82)' : 'rgba(14,22,10,0.80)';
     ctx.fill();
     if (offline) {
       ctx.lineWidth = 2;
-      ctx.strokeStyle = 'rgba(200,90,90,0.55)';
+      ctx.strokeStyle = 'rgba(255,212,202,0.55)';
       ctx.stroke();
     }
 
@@ -320,6 +348,14 @@ export class Chicken {
     if (flag) {
       drawFlag(ctx, flag, 14, 12, L.flagW, L.flagH);
       x0 = 14 + L.flagW + 8;
+    }
+    // 图标位（可选）：与 DOM 侧同一份几何 —— drawIcon 直接复用 sprite 里 symbol 的 d，
+    // 所以名牌上的图形和面板上的图标逐点一致。18px 是设计给的下限
+    // （1.75 描边在更小的尺寸会糊），名字留白由下面的 x0 自动让出来。
+    if (iconId) {
+      const s = 18;
+      // 颜色对应 --farm-ink；+6 与样式表里的 --icon-gap 同值
+      if (drawIcon(ctx, iconId, x0, L.titleY - s + 4, s, '#ffffff')) x0 += s + 6;
     }
 
     // 名字留白的阈值：探针卡右侧要放两个圆环，网站卡窄，所以三套宽度各不相同
@@ -336,7 +372,7 @@ export class Chicken {
       const subFont = SUB_FONT(L.sub);
       const s = fitName(ctx, sub, subFont, maxW - (x0 - 14));
       ctx.font = subFont;
-      ctx.fillStyle = 'rgba(255,255,255,0.72)';
+      ctx.fillStyle = '#dbe4d5';
       ctx.fillText(s, x0, L.subY);
     }
 
@@ -347,7 +383,7 @@ export class Chicken {
       ctx.fill();
       if (hp > 0) {
         roundRect(ctx, 14, by, Math.max(bh, bw * hp), bh, bh / 2);
-        ctx.fillStyle = hp > 0.5 ? '#7ec850' : hp > 0.25 ? '#e8b23a' : '#e05252';
+        ctx.fillStyle = hp > 0.5 ? '#c0eb96' : hp > 0.25 ? '#ffd98a' : '#ffd4ca';
         ctx.fill();
       }
     }
@@ -356,8 +392,8 @@ export class Chicken {
       const r = this.kind === 'probe' ? 20 : 16;
       const cy = L.titleY - 6;
       const cx2 = W - 34;
-      drawGauge(ctx, cx2 - (r * 2 + 10), cy, r, cpu, '#7ec850');
-      drawGauge(ctx, cx2, cy, r, mem, '#5aa7d6');
+      drawGauge(ctx, cx2 - (r * 2 + 10), cy, r, cpu, '#c0eb96');
+      drawGauge(ctx, cx2, cy, r, mem, '#6fb3e8');
     }
 
     this.plateTex.needsUpdate = true;

@@ -11,6 +11,7 @@ import {
   monthUsage, expiringIn, staleFor, nowSec, formatBytesShort,
 } from '/shared/derive.js';
 import { flagEl, mountFlagSprite } from './flag.js';
+import { iconEl } from './icons.js';
 import { nodeHistory, themeConfig, pick } from './history.js';
 import { renderChart, renderSpark } from './chart.js';
 import { stats as seriesStats, alignByTs } from '/shared/chart.js';
@@ -702,9 +703,13 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
     flag.append(flagEl(node.country));
     const h2 = el('h2', null, node.name);
     const pill = el('span', `pill ${statusOf(node, now)}`, STATUS_LABEL[statusOf(node, now)]);
-    const reload = el('button', 'ghost icon', '⟳');
+    // 图标是按钮唯一内容：图形自己 aria-hidden，名称给按钮 ——
+    // 换成 SVG 之后若不同时补 aria-label，按钮会变成完全无名称，比原来的字符名更糟。
+    const reload = el('button', 'ghost icon');
     reload.type = 'button';
+    reload.append(iconEl('refresh', 20));
     reload.title = '重新读取历史';
+    reload.setAttribute('aria-label', '重新读取历史');
     reload.disabled = detail.loading;
     reload.onclick = () => {
       // 假 hub 的历史是确定性的（同参数同结果），所以「看起来没变」是正常的 ——
@@ -713,9 +718,11 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
       detail.loadedKey = '';
       void renderDrawer();
     };
-    const close = el('button', 'ghost icon', '✕');
+    const close = el('button', 'ghost icon');
     close.type = 'button';
+    close.append(iconEl('close', 20));
     close.title = '关闭';
+    close.setAttribute('aria-label', '关闭详情');
     close.onclick = closeDetail;
     head.append(flag, h2, pill, reload, close);
 
@@ -753,7 +760,7 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
     const stamp = el('p', 'sub fetched');
     if (detail.loading) stamp.textContent = '正在读取历史…';
     else if (detail.error) stamp.textContent = `历史读取失败：${detail.error}`;
-    else if (detail.fetchedAt) stamp.textContent = `历史更新于 ${new Date(detail.fetchedAt).toLocaleTimeString('zh-CN', { hour12: false })}（点右上角 ⟳ 重新读取）`;
+    else if (detail.fetchedAt) stamp.textContent = `历史更新于 ${new Date(detail.fetchedAt).toLocaleTimeString('zh-CN', { hour12: false })}（点右上角的刷新按钮重新读取）`;
     else stamp.textContent = '尚未读取历史';
 
     const body = el('div', 'body');
@@ -825,7 +832,9 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
 
   function setSiteName(name) {
     if (name) {
-      $('site-name').textContent = `🐔 ${name}`;
+      // 只写文字那一层：#site-name 现在是「图标 + span」，
+      // 直接写它的 textContent 会把图标一起删掉（而且不报错）
+      $('site-name-text').textContent = name;
       document.title = name;  // 浏览器标签页标题用后台的网站名，不用预设的"养鸡探针"
     }
   }

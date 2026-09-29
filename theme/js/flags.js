@@ -4,8 +4,8 @@
 // 由它的 scripts/build-flags.py 生成），两个主题的国旗长得一样，不再各画一套。
 // 素材：country-flag-icons（MIT）https://github.com/UNITED-ELECTRONICS/country-flag-icons
 //
-// 为什么不用 emoji 国旗：Windows 的 Segoe UI Emoji 里没有国旗字形，浏览器会把 🇯🇵 画成
-// 「JP」两个字母 —— 在 Windows 上"emoji 国旗"这个方案本来就是坏的。
+// 为什么不用 emoji 国旗：Windows 的 Segoe UI Emoji 里没有国旗字形，浏览器会把 U+1F1EF
+// U+1F1F5（日本区域指示符对）画成「JP」两个字母 —— 在 Windows 上「emoji 国旗」这个方案本来就是坏的。
 //
 // 内联而不是请求文件：hub 决定 MIME，SVG 一旦不是 image/svg+xml，塞进 <img> 就不渲染。
 

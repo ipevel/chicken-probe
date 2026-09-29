@@ -12,11 +12,11 @@
   --ink-3: #6b7178;
   --line: #e5e7ea;
   --line-2: #d2d5da;
-  /* 作为文字用时原色只有 2.87:1；压深到 #4a7a37（4.6:1）。
-     填充/描边仍可继续用原色，故另留一个 accent-fill。 */
-  --accent: #4a7a37;
-  --accent-fill: #6aa84f;
-  --accent-soft: #eaf3e4;
+  /* 冷松绿。作文字 6.28:1（白纸），作填充 6.28:1，一个值同时满足 4.5:1 与 3:1。
+     旧的 #6aa84f 作文字只有 2.87:1，所以那时才要拆两个值；现在不必。 */
+  --accent: #2f6b52;
+  --accent-fill: var(--accent);
+  --accent-soft: #e0f0e9;
   /* 原色 #d98f2b 作文字仅 2.65:1，同样不达 AA；#a15c07 为 4.6:1。 */
   --warn: #a15c07;
   --warn-fill: #d98f2b;
@@ -30,11 +30,15 @@
   --c-mem: #3f7fb5;
   --c-disk: #8a6a52;
   --c-up: #c9821f;
-  --c-down: #2f8f7f;
+  /* --c-down 与 --c-ping-4 刻意远离 --accent 的色相（亮 #2f6b52 / H155°）：
+     换成冷松绿后主色搬进了这一档的邻域（旧 #2f8f7f 是 H170°，只差 15°，ΔE 掉到 16.2）。
+     .chart .live-dot 是主色实心点、就画在同一张折线图上，所以 #2e93a2（H188°）把两侧都推开。
+     别把 --accent 加进图表调色板 —— 这套线的纪律是同图内 ΔE ≥ 40。 */
+  --c-down: #2e93a2;
   --c-ping-1: #3f7fb5;
   --c-ping-2: #c9821f;
   --c-ping-3: #7a4fa8;
-  --c-ping-4: #2f8f7f;
+  --c-ping-4: #2e93a2;
   /* 分段计量条的「指标标识色」。
      与告警色分开：读数正常时用这几个色相表达"这是哪个指标"，
      越过 80%/92% 阈值后整条换成 warn/danger——静默时颜色是身份，
@@ -43,6 +47,57 @@
   --m-mem: #7a4fa8;
   --m-disk: #9c6b28;
   --m-load: #b0507a;
+
+  /* ---- 结构性尺度：与亮暗无关，一套值 ----
+     圆角从散落的 7 档收成 4 档；间距取 4 的倍数（6 保留：现有 gap:6px 用得很多）；
+     字号从 10 档收成 8 档（11.5 → 12、12.5 → 13）；字重只用三档。 */
+  --r-xs: 6px;                     /* 徽标、小角标、.sstat */
+  --r-sm: 9px;                     /* 按钮、输入、页签、.viewtoggle */
+  --r-md: var(--radius);           /* 卡片、浮层、鸡场 HUD 卡（= 现有 --radius，别名不删） */
+  --r-pill: 999px;
+  --sp-1: 4px;  --sp-2: 6px;  --sp-3: 8px;  --sp-4: 12px;  --sp-5: 16px;  --sp-6: 20px;
+  --fs-10: 10px;  --fs-11: 11px;  --fs-12: 12px;  --fs-13: 13px;
+  --fs-14: 14px;  --fs-15: 15px;  --fs-17: 17px;  --fs-19: 19px;
+  --fw-n: 400;  --fw-m: 500;  --fw-b: 600;
+  --dur-1: .12s;  --dur-2: .18s;  --dur-3: .25s;
+  --ease: cubic-bezier(.22, .61, .36, 1);
+
+  /* 图标尺度：.i 跟字号，.i-16/20/26 是固定三档；--icon-gap 是图标与文字的唯一间距 */
+  --ic-16: 16px;  --ic-20: 20px;  --ic-26: 26px;
+  --icon-gap: 6px;
+
+  /* 浮动层阴影：--shadow 是卡片级，抽屉与浮层要更深一层 */
+  --shadow-2: 0 2px 6px rgba(20, 22, 26, .08), 0 14px 40px rgba(20, 22, 26, .14);
+
+  /* 焦点环：双层。内层用 --paper 把环与元素本身隔开，外层必须 ≥3:1。
+     里面的 var() 是惰性求值，所以这一套定义吃亮暗两套主题，不必重写。
+     不能用 #6aa84f 那种亮绿当环色（对白底 2.87:1）；--accent 现在是 6.28:1，可以直接用。 */
+  --focus-w: 2px;
+  --focus: 0 0 0 var(--focus-w) var(--paper), 0 0 0 calc(var(--focus-w) * 2) var(--accent);
+
+  /* 语义别名（新增，不动旧名） */
+  --accent-on-soft: var(--accent);  /* 旧主色压旧 soft 只有 4.46:1 才需要这个别名；新主色压新 soft 是 5.32:1，别名保留但不再需要独立取值 */
+  --surface-2: #fafbfc;             /* 二级底色，替掉 .sstat 里 color-mix 现算的那一档 */
+  --line-control: #858b93;          /* 控件边界。对 --bg 3.18:1（取更严的一侧），达到 WCAG 1.4.11 的 3:1 */
+  --line-control-hover: var(--ink-3);  /* 悬停。--ink-3 亮 #6b7178 / 暗 #8d949e，两套都是「对比更强」；用 --line-2 会反向 */
+
+  /* ---- 鸡场：HUD 与场景的一套值 ----
+     鸡场不随亮暗整体翻转（3D 世界有自己的光照），所以这一层定义在 :root，
+     暗色下只把玻璃再压深一档，见下面的 html.dark .farm。
+     八档文字都是按「最亮的两种背景」（天空 #a8d8f0、草地 #9fd08a）实算出来的，
+     取两个值里较差的那个；玻璃从 .55 提到 .62 才让这八档一起进合格区。 */
+  --farm-grass: #9fd08a;                       /* 草地 / iOS 回弹露出的底色 */
+  --farm-sky: #a8d8f0;                         /* 与 world.js 的 SKY 同值，只作文档用，CSS 里不直接引用 */
+  --farm-haze: rgba(18, 28, 14, .62);          /* 卡片级：hud-stats / board / me / hint / 飘字 */
+  --farm-haze-strong: rgba(14, 22, 10, .80);   /* 药丸级：事件流、改名浮层、KO 横幅 */
+  --farm-ink: #ffffff;                         /* 6.43:1 / 6.96:1 */
+  --farm-ink-dim: #dbe4d5;                     /* 4.92:1 / 5.33:1 */
+  --farm-accent: #ffe27a;                      /* 5.02:1 / 5.44:1 数字、榜标题、我的行 */
+  --farm-good: #c0eb96;                        /* 4.76:1 / 5.16:1 联机中 */
+  --farm-warn: #ffd98a;                        /* 4.76:1 / 5.15:1 重连中、告警 */
+  --farm-bad: #ffd4ca;                         /* 4.75:1 / 5.15:1 错误、断开 */
+  --farm-off: #d6ded1;                         /* 4.66:1 / 5.05:1 离场灰显 */
+  --farm-score: #d7ecc0;                       /* 5.09:1 / 5.52:1 分数行、事件流 */
 }
 
 html.dark {
@@ -54,9 +109,10 @@ html.dark {
   --ink-3: #8d949e;
   --line: #2a2e35;
   --line-2: #383d45;
-  --accent: #9fd08a;
-  --accent-fill: #9fd08a;
-  --accent-soft: #23301f;
+  --line-control: #6f767f;          /* 暗色档；跟着 --line-2 放，别漏 */
+  --accent: #8ecdb3;
+  --accent-fill: var(--accent);
+  --accent-soft: #1b2b25;
   --warn: #e0a951;
   --warn-fill: #e0a951;
   --danger: #e8695e;
@@ -67,12 +123,27 @@ html.dark {
   --c-mem: #6fb3e8;
   --c-disk: #bfa189;
   --c-up: #e8b45c;
-  --c-down: #5fc9b4;
+  --c-down: #5cc2cf;   /* 同上：与暗色主色 #8ecdb3 保持色相距离（ΔE 22.6） */
   --c-ping-1: #6fb3e8;
   --c-ping-2: #e8b45c;
   --c-ping-3: #b18fdc;
-  --c-ping-4: #5fc9b4;
+  --c-ping-4: #5cc2cf;
+  /* 暗色下把浮动层阴影加深；--focus 不用重写（里面的 var() 会用暗色那套值） */
+  --shadow-2: 0 2px 6px rgba(0, 0, 0, .5), 0 14px 40px rgba(0, 0, 0, .45);
+  --surface-2: #22262c;
+  --accent-on-soft: var(--accent);
+  /* 缺陷修复：--m-* 原来只在 :root 定义，html.dark 没覆盖 —— 内存紫 #7a4fa8 压在
+     #1c1f24 上只有 2.76:1，低于非文字要求的 3:1，分段计量条的「信息本体」在暗色下最弱。
+     取值沿用 --c-* 的暗色档色相，保证同一指标在图表和计量条上同色。 */
+  --m-cpu: #6fb3e8;   /* 7.31:1 */
+  --m-mem: #b18fdc;   /* 6.16:1（原 2.76:1） */
+  --m-disk: #bfa189;  /* 6.83:1 */
+  --m-load: #e08fb0;  /* 6.87:1 */
 }
+
+/* 鸡场不随亮暗整体翻转：3D 世界有自己的光照，翻一套只会做出「晚上的鸡场」，
+   那是另一个需求。这里只把玻璃再压深一档，让习惯暗色的用户少一点界面亮度。 */
+html.dark .farm { --farm-haze: rgba(12, 20, 9, .68); }
 
 * { box-sizing: border-box; }
 
@@ -90,7 +161,8 @@ body {
 body.in-farm { overflow: hidden; }
 
 #boot {
-  position: fixed; inset: 0; display: grid; place-items: center;
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  gap: var(--icon-gap);
   background: var(--bg); color: var(--ink-2); z-index: 50;
 }
 /* 首屏脚本一跑就把 boot 摘掉：它只是防白屏，不该挡住面板 */
@@ -98,30 +170,65 @@ body.ready #boot { display: none; }
 
 button, select, input { font: inherit; color: inherit; }
 
-.ghost {
-  background: var(--paper); border: 1px solid var(--line); color: var(--ink);
-  border-radius: 9px; padding: 6px 11px; cursor: pointer; transition: border-color .12s, background .12s;
+/* 键盘导航的焦点环：只在键盘操作时出现，鼠标点击不打扰现有观感。
+   双层环的形状：内层 --paper 把环与元素本身隔开，外层 --accent 对两种底色都 ≥3:1。 */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+  border-radius: inherit;           /* 环跟着元素圆角走 */
 }
-.ghost:hover { border-color: var(--line-2); background: var(--accent-soft); }
-.ghost.icon { padding: 6px 9px; }
+/* 老浏览器兜底：不支持 :focus-visible 时至少给个可见轮廓 */
+@supports not selector(:focus-visible) {
+  button:focus, a:focus, input:focus, select:focus {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+}
+
+/* 图标：颜色永远来自 currentColor，尺寸要么跟字号（.i）要么取固定三档。
+   1em + vertical-align 那一档是给正文里的行内图标用的，不破坏行高。 */
+.i { width: 1em; height: 1em; flex: none; vertical-align: -0.125em; }
+.i-16 { width: var(--ic-16); height: var(--ic-16); }
+.i-20 { width: var(--ic-20); height: var(--ic-20); }
+.i-26 { width: var(--ic-26); height: var(--ic-26); }
+/* 一句话里并排放一组图标（事件流里「整只鸡 + 撞击爆点」那一对）时用它撑开间距，别靠空格拼 */
+.i-group { display: inline-flex; align-items: center; gap: 2px; vertical-align: -0.125em; }
+/* 图标后面那层文字：作为 flex item 会被块化，overflow + 省略号才生效 ——
+   直接写在 flex 容器上不生效（flex 容器不是块容器，text-overflow 无从作用）。 */
+.i-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.ghost {
+  background: var(--paper); border: 1px solid var(--line-control); color: var(--ink);
+  border-radius: var(--r-sm); padding: 7px 12px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: var(--icon-gap);
+  transition: border-color var(--dur-1), background var(--dur-1);
+}
+.ghost:hover { border-color: var(--line-control-hover); background: var(--accent-soft); }
+/* 纯图标按钮：宽度也要 ≥36px，否则图标与边框之间只剩 9px 的空档，点起来像在瞄针眼 */
+.ghost.icon { padding: 7px 10px; min-width: 36px; justify-content: center; }
 
 /* ---------------- 面板 ---------------- */
 
 .panel { max-width: 1240px; margin: 0 auto; padding: 20px 20px 60px; }
 
 .top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.top h1 { font-size: 17px; margin: 0; font-weight: 600; letter-spacing: .2px; }
+.top h1 {
+  display: inline-flex; align-items: center; gap: var(--icon-gap);
+  font-size: 17px; margin: 0; font-weight: 600; letter-spacing: .2px;
+}
 .top-actions { margin-left: auto; display: flex; gap: 8px; }
 
 .conn { font-size: 12px; color: var(--ink-3); border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; }
-.conn.live { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+/* .conn 是状态徽章、不是交互控件，1.4.11 不强制它的边界；信息由 6.28:1 的文字承担。
+   但既然本轮已经在动边界、又和 .controls 同处一个 top bar，顺手把混色基底换成 --line-control
+   （亮 2.18:1 → 4.38:1、暗 2.98:1 → 5.37:1）。.conn.error/.closed 与 .pill.alert 族同属徽章，本次不动。 */
+.conn.live { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--line-control)); }
 .conn.error, .conn.closed { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
 .conn.polling, .conn.reconnecting { color: var(--warn); }
 
-.summary { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0 14px; }
+.summary { display: flex; gap: 12px; flex-wrap: wrap; margin: 16px 0 14px; }
 .cell {
   flex: 1 1 150px; background: var(--paper); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: 10px 12px; box-shadow: var(--shadow); min-width: 132px;
+  border-radius: var(--r-md); padding: 10px 12px; box-shadow: var(--shadow); min-width: 132px;
 }
 .cell .k { font-size: 11px; color: var(--ink-3); letter-spacing: .4px; }
 .cell .v { font-size: 19px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
@@ -134,28 +241,34 @@ button, select, input { font: inherit; color: inherit; }
 .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .chip {
-  border: 1px solid var(--line); background: var(--paper); color: var(--ink-2);
-  border-radius: 999px; padding: 4px 11px; font-size: 12.5px; cursor: pointer;
+  border: 1px solid var(--line-control); background: var(--paper); color: var(--ink-2);
+  border-radius: var(--r-pill); padding: 5px 11px; font-size: 12.5px; cursor: pointer;
 }
-.chip:hover { border-color: var(--line-2); }
+.chip:hover { border-color: var(--line-control-hover); }
 .chip[aria-selected="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 .chip .n { opacity: .6; margin-left: 4px; font-variant-numeric: tabular-nums; }
 
+/* 控件边界用 --line-control：亮 #858b93（对 --bg 3.18:1）/ 暗 #6f767f（对 --surface-2 3.31:1），
+   达到 1.4.11 的 3:1。悬停用 --line-control-hover，不要用 --line-2（那样会比常驻态更淡）。 */
 .controls select, .controls input[type="search"] {
-  background: var(--paper); border: 1px solid var(--line); border-radius: 9px; padding: 5px 9px; font-size: 13px;
+  background: var(--paper); border: 1px solid var(--line-control); border-radius: var(--r-sm); padding: 5px 9px; font-size: 13px;
 }
 .controls input[type="search"] { min-width: 190px; }
 .controls input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); }
 .viewtoggle { display: flex; gap: 0; margin-left: auto; }
 .viewtoggle button {
-  background: var(--paper); border: 1px solid var(--line); color: var(--ink-2);
+  background: var(--paper); border: 1px solid var(--line-control); color: var(--ink-2);
   padding: 5px 10px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
 }
-.viewtoggle button:first-child { border-radius: 9px 0 0 9px; }
-.viewtoggle button:last-child { border-radius: 0 9px 9px 0; border-left: none; }
-.viewtoggle button[aria-pressed="true"] { background: var(--accent-soft); color: var(--ink); }
+.viewtoggle button:first-child { border-radius: var(--r-sm) 0 0 var(--r-sm); }
+.viewtoggle button:last-child { border-radius: 0 var(--r-sm) var(--r-sm) 0; border-left: none; }
+/* 选中态统一成反色填充，与 .chip / .tab / .range 同一套语言。
+   原来是 --accent-soft 浅绿填充 —— 同一页里「选中」长得不一样，用户得多学一套；
+   而且浅绿会和 .conn.live 的绿色语义撞车。反色在亮暗两套里天然成立，不必再挑颜色。 */
+.viewtoggle button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(252px, 1fr)); gap: 12px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
 .grid.list { grid-template-columns: 1fr; }
 
 .empty { color: var(--ink-3); text-align: center; padding: 40px 0; }
@@ -164,8 +277,8 @@ button, select, input { font: inherit; color: inherit; }
 
 .card {
   position: relative; background: var(--paper); border: 1px solid var(--line);
-  border-radius: var(--radius); padding: 12px 13px 10px; box-shadow: var(--shadow);
-  cursor: pointer; overflow: hidden; transition: border-color .12s, transform .12s;
+  border-radius: var(--r-md); padding: 12px 14px 11px; box-shadow: var(--shadow);
+  cursor: pointer; overflow: hidden; transition: border-color var(--dur-1), transform var(--dur-1);
 }
 .card:hover { border-color: var(--line-2); }
 .card:active { transform: translateY(1px); }
@@ -189,7 +302,7 @@ button, select, input { font: inherit; color: inherit; }
   border: 1px solid var(--line-2); border-radius: 3px; padding: 2px 3px;
 }
 .pill {
-  margin-left: auto; font-size: 11px; padding: 2px 7px; border-radius: 999px;
+  margin-left: auto; font-size: 11px; padding: 2px 7px; border-radius: var(--r-pill);
   border: 1px solid var(--line); color: var(--ink-2); white-space: nowrap;
 }
 .pill.alert, .pill.offline, .pill.unreadable { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, var(--line)); }
@@ -199,7 +312,7 @@ button, select, input { font: inherit; color: inherit; }
 /* 2×2 指标区：CPU/内存 一行，硬盘/负载 一行。
    负载从原先的 mid 行提上来当第四个读数——它按核数折算后本来就是个占用率，
    配一条同样的计量条才说得通。 */
-.nums { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 14px; margin: 10px 0 6px; }
+.nums { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 16px; margin: 10px 0 6px; }
 .num .k { font-size: 11px; color: var(--ink-3); }
 .num .v { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .num .v.muted { color: var(--ink-3); font-weight: 500; }
@@ -224,17 +337,20 @@ button, select, input { font: inherit; color: inherit; }
 .seg.mem > i.on { background: var(--m-mem); }
 .seg.disk > i.on { background: var(--m-disk); }
 .seg.load > i.on { background: var(--m-load); }
-.seg > i.on.warn { background: var(--warn-fill); }
-.seg > i.on.danger { background: var(--danger-fill); }
+/* 越线态用「文字档」的 --warn / --danger，不用 --warn-fill / --danger-fill：
+   填充档对空槽只有 2.14:1 / 3.66:1（亮），涨过 80% 后橙格和空格分不出来。
+   文字档本来就是为压在浅底上压深过的，4.19:1 / 4.79:1。空槽不动。 */
+.seg > i.on.warn { background: var(--warn); }
+.seg > i.on.danger { background: var(--danger); }
 .seg.dim > i.on { background: var(--line-2); }
 
 .bar { height: 3px; border-radius: 2px; background: var(--line); margin-top: 4px; overflow: hidden; }
 .bar > i { display: block; height: 100%; background: var(--ink-3); }
-.bar > i.warn { background: var(--warn-fill); }
-.bar > i.danger { background: var(--danger-fill); }
+.bar > i.warn { background: var(--warn); }
+.bar > i.danger { background: var(--danger); }
 .bar.half { height: 2px; }
 
-.card-mid { display: flex; flex-direction: column; gap: 7px; margin-top: 8px; }
+.card-mid { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 .mid { flex: 1; min-width: 0; }
 .mid .k { font-size: 11px; color: var(--ink-3); display: flex; justify-content: space-between; gap: 8px; }
 .mid .k > span:first-child { flex: none; }
@@ -264,8 +380,8 @@ button, select, input { font: inherit; color: inherit; }
 
 .drawer {
   position: fixed; top: 0; right: 0; bottom: 0; width: min(430px, 100vw);
-  background: var(--paper); border-left: 1px solid var(--line); box-shadow: -8px 0 30px rgba(0, 0, 0, .12);
-  transform: translateX(0); transition: transform .18s ease; z-index: 30;
+  background: var(--paper); border-left: 1px solid var(--line); box-shadow: var(--shadow-2);
+  transform: translateX(0); transition: transform var(--dur-2) var(--ease); z-index: 30;
   display: flex; flex-direction: column;
 }
 .drawer.closed { transform: translateX(102%); }
@@ -288,15 +404,17 @@ button, select, input { font: inherit; color: inherit; }
 .tabs { padding-top: 12px; }
 .ranges { padding-top: 8px; }
 .tab, .range {
-  background: var(--paper); border: 1px solid var(--line); color: var(--ink-2);
-  border-radius: 8px; padding: 4px 11px; font-size: 12.5px; cursor: pointer;
+  background: var(--paper); border: 1px solid var(--line-control); color: var(--ink-2);
+  border-radius: var(--r-sm); padding: 5px 11px; font-size: 12.5px; cursor: pointer;
 }
 .tab[aria-selected="true"], .range[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
-.tab:hover, .range:hover { border-color: var(--line-2); }
+.tab:hover, .range:hover { border-color: var(--line-control-hover); }
 
-/* 每个序列一格：颜色点 + 名称 + 当前/均值/峰值（同时充当图例） */
+/* 每个序列一格：颜色点 + 名称 + 当前/均值/峰值（同时充当图例）。
+   底色用 --surface-2 而不是 color-mix 现算：亮色下 color-mix 的结果比 --paper 暗一点、
+   暗色下比 --paper 亮一点，卡片层次在亮暗两套里方向相反。 */
 .series-stats { display: flex; gap: 10px; flex-wrap: wrap; margin: 6px 0 2px; }
-.sstat { flex: 1 1 120px; background: color-mix(in srgb, var(--paper) 60%, var(--bg)); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+.sstat { flex: 1 1 120px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-xs); padding: 6px 8px; }
 .sstat-h { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--ink-2); }
 .sstat-h i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
 .sstat-n { display: flex; align-items: baseline; gap: 8px; margin-top: 2px; }
@@ -316,8 +434,8 @@ button, select, input { font: inherit; color: inherit; }
 .chart-empty { height: 60px; display: grid; place-items: center; color: var(--ink-3); font-size: 12px; }
 .chart-readout {
   position: absolute; top: 4px; pointer-events: none; z-index: 2;
-  background: var(--paper); border: 1px solid var(--line-2); border-radius: 8px;
-  padding: 6px 8px; font-size: 11.5px; box-shadow: var(--shadow); min-width: 132px;
+  background: var(--paper); border: 1px solid var(--line-2); border-radius: var(--r-sm);
+  padding: 6px 8px; font-size: 11.5px; box-shadow: var(--shadow-2); min-width: 132px;
 }
 .chart-readout .ro-time { color: var(--ink-3); margin-bottom: 3px; }
 .chart-readout .ro-line { display: flex; align-items: center; gap: 5px; }
@@ -337,13 +455,13 @@ button, select, input { font: inherit; color: inherit; }
 /* 3D 鸡场：整屏场景 + 一层深色半透明 HUD。
    底绿、字体、手势都照参考站来，但只挂在这棵子树上 —— 面板的底色与滚动不能跟着变。 */
 .farm {
-  position: fixed; inset: 0; background: #9fd08a; overflow: hidden;
+  position: fixed; inset: 0; background: var(--farm-grass); overflow: hidden;
   font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
   overscroll-behavior: none; touch-action: none; -webkit-tap-highlight-color: transparent;
   user-select: none; -webkit-user-select: none;
 }
 /* 进鸡场时连 body 也换成草地色：iOS 回弹时露出来的才是绿的 */
-body.in-farm { background: #9fd08a; }
+body.in-farm { background: var(--farm-grass); }
 #app { position: absolute; inset: 0; }
 #app canvas { display: block; touch-action: none; }
 
@@ -353,11 +471,22 @@ body.in-farm { background: #9fd08a; }
   --sa-r: env(safe-area-inset-right, 0px);
   --sa-b: env(safe-area-inset-bottom, 0px);
   --sa-l: env(safe-area-inset-left, 0px);
+  /* 啄倒榜的宽度上限。它同时是顶栏在右侧让出的带宽 —— 两个数字必须同源，
+     否则顶栏让多了浪费横向空间、让少了又压在一起。
+     榜单是 position:absolute，不参与 #hud-top 的折行计算：它只会压到顶栏上，
+     不会把顶栏挤到下一行。而它的宽度是内容驱动的（名字最长 24 字节、
+     折叠标题最长 20 个字），所以要让位，就必须先给榜单钉一个上限。
+     145px 不是取整好记，是当前内容实际宽度 144.7 向上取整；调小会在今天就
+     让榜单换行/省略 —— 那是改现状，不是修 bug。 */
+  --board-max: 145px;
+  /* 561–660px 那一档用的是另一条约束：榜单基础的 min-width（见 #board 基准规则）。
+     也要与 #hud-top 的 right 同源，所以同样收成一个名字 —— 两处都别再写裸数字。 */
+  --board-min: 220px;
 }
 
 /* HUD 整层不吃指针：空白处拖动要穿透到画布去转视角。
    只有真要点/要拖的东西自己开 pointer-events。 */
-#hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; color: #fff; }
+#hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; color: var(--farm-ink); }
 
 /* 左上角：三行数面板 + 返回/联机徽标（挨着面板排，别和它抢位置） */
 #hud-top {
@@ -365,51 +494,63 @@ body.in-farm { background: #9fd08a; }
   display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap;
   pointer-events: none;
 }
+/* 玻璃只有两档（原来有 .42/.45/.48/.55/.65 五个值 + 两处特例）：
+   --farm-haze 给卡片级，--farm-haze-strong 给药丸级。加深玻璃不是审美调整 ——
+   原来 .55 玻璃叠天空只有 #577274，八档文字里七项不达 4.5:1，靠改字色救不回来。 */
 .hud-stats {
   display: flex; flex-direction: column;
-  background: rgba(20, 30, 15, .55); color: #fff;
-  padding: 8px 14px; border-radius: 10px;
+  background: var(--farm-haze); color: var(--farm-ink);
+  padding: 9px 14px; border-radius: var(--r-md);
   font-size: 15px; font-weight: bold; line-height: 1.5;
   backdrop-filter: blur(4px);
 }
-#online, #web-online, #visitors { color: #ffd95e; font-variant-numeric: tabular-nums; }
+/* 三行都是「图标 + 文字 + 数字」：用同一套间距，别靠空格拼对不齐 */
+.hud-stats span { display: inline-flex; align-items: center; gap: var(--icon-gap); }
+#online, #web-online, #visitors { color: var(--farm-accent); font-variant-numeric: tabular-nums; }
 
 /* 返回与联机状态：同一套深色卡片语言；按钮与徽标自己吃指针，卡面不吃 */
 #back-btn {
   pointer-events: auto; cursor: pointer;
-  background: rgba(20, 30, 15, .55); color: #fff;
-  border: 1px solid rgba(255, 255, 255, .18); border-radius: 10px;
-  padding: 6px 12px; font-size: 13px; font-weight: bold;
-  backdrop-filter: blur(4px); transition: background .12s;
+  background: var(--farm-haze); color: var(--farm-ink);
+  border: 1px solid rgba(255, 255, 255, .18); border-radius: var(--r-md);
+  padding: 6px 13px; font-size: 13px; font-weight: bold;
+  display: inline-flex; align-items: center; gap: var(--icon-gap);
+  backdrop-filter: blur(4px); transition: background var(--dur-1);
 }
-#back-btn:hover { background: rgba(20, 30, 15, .74); }
+/* 悬停直接用「深一档」的那一层，不再另造一个透明度 */
+#back-btn:hover { background: var(--farm-haze-strong); }
 #room-state {
   pointer-events: auto;
-  background: rgba(20, 30, 15, .55); color: #fff;
-  border: 1px solid rgba(255, 255, 255, .18); border-radius: 999px;
-  padding: 4px 10px; font-size: 12px; backdrop-filter: blur(4px);
+  background: var(--farm-haze); color: var(--farm-ink);
+  border: 1px solid rgba(255, 255, 255, .18); border-radius: var(--r-pill);
+  padding: 4px 11px; font-size: 12px; backdrop-filter: blur(4px);
 }
-/* 联机状态仍按状态给色，只是换成暗底上看得清的色阶 */
-#room-state.live { color: #b8e986; }
-#room-state.connecting, #room-state.reconnecting, #room-state.polling { color: #ffd95e; }
-#room-state.error, #room-state.closed, #room-state.off { color: #ff9a8a; }
+/* 联机状态仍按状态给色，只是换成暗底上看得清的色阶（八档都按最亮背景实算过） */
+#room-state.live { color: var(--farm-good); }
+#room-state.connecting, #room-state.reconnecting, #room-state.polling { color: var(--farm-warn); }
+#room-state.error, #room-state.closed, #room-state.off { color: var(--farm-bad); }
 
 /* 啄倒榜：整块可点（JS 用 .collapsed 折叠），所以自己开 pointer-events */
 #board {
   position: absolute; top: calc(12px + var(--sa-t)); right: calc(16px + var(--sa-r));
-  min-width: 220px; max-width: 300px;
-  background: rgba(20, 30, 15, .55); color: #fff;
-  border-radius: 10px; padding: 10px 14px; font-size: 13px;
+  min-width: var(--board-min); max-width: 300px;
+  background: var(--farm-haze); color: var(--farm-ink);
+  border-radius: var(--r-md); padding: 10px 14px; font-size: 13px;
   backdrop-filter: blur(4px); pointer-events: auto; cursor: pointer;
 }
-#board h3 { margin: 0 0 6px; font-size: 13px; color: #ffd95e; }
+#board h3 {
+  display: inline-flex; align-items: center; gap: var(--icon-gap);
+  margin: 0 0 6px; font-size: 13px; color: var(--farm-accent);
+}
 #board.collapsed #board-rows { display: none; }
 #board.collapsed h3 { margin-bottom: 0; }
 #board-rows .row { display: flex; justify-content: space-between; gap: 16px; line-height: 1.7; }
-#board-rows .row.me { color: #ffd95e; }
-#board-rows .row.off { color: #8b948c; }
-#board-rows .row .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#board-rows .row .sc { font-variant-numeric: tabular-nums; opacity: .8; }
+#board-rows .row.me { color: var(--farm-accent); }
+#board-rows .row.off { color: var(--farm-off); }
+/* 行首图标 + 名字，所以 .nm 变成 flex 容器（名字文字的省略号在 .i-label 上，见上面） */
+#board-rows .row .nm { display: flex; align-items: center; gap: var(--icon-gap); min-width: 0; overflow: hidden; }
+/* 原来是 opacity: .8 —— 等于把对比度交给背后的场景决定，改不动也量不准 */
+#board-rows .row .sc { font-variant-numeric: tabular-nums; color: var(--farm-ink-dim); }
 
 /* 事件流：屏幕顶端正中，一条条往下叠 */
 #feed {
@@ -417,8 +558,8 @@ body.in-farm { background: #9fd08a; }
   display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 90vw;
 }
 .feed-item {
-  background: rgba(20, 30, 15, .65); color: #ffe9b0; font-size: 13px;
-  padding: 6px 14px; border-radius: 999px; animation: pop .25s ease-out;
+  background: var(--farm-haze-strong); color: var(--farm-score); font-size: 13px;
+  padding: 6px 14px; border-radius: var(--r-pill); animation: pop var(--dur-3) var(--ease);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90vw;
 }
 @keyframes pop { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
@@ -426,29 +567,32 @@ body.in-farm { background: #9fd08a; }
 /* 我的面板：血条 + 分数。改名浮层从卡片上方浮出来，不占卡片内部的位置 */
 #me {
   position: absolute; left: calc(16px + var(--sa-l)); bottom: calc(16px + var(--sa-b));
-  width: 260px; background: rgba(20, 30, 15, .55); color: #fff;
-  border-radius: 10px; padding: 10px 14px; backdrop-filter: blur(4px); pointer-events: auto;
+  width: 260px; background: var(--farm-haze); color: var(--farm-ink);
+  border-radius: var(--r-md); padding: 10px 14px; backdrop-filter: blur(4px); pointer-events: auto;
 }
 #me-line { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+/* 名字行是「图标 + 名字」，名字的省略号同样在 .i-label 上 */
 #me-name {
+  display: flex; align-items: center; gap: var(--icon-gap);
   flex: 1; min-width: 0; font-size: 14px; font-weight: bold;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 #me-edit, #me-name-ok {
-  background: none; border: none; color: #fff; cursor: pointer;
-  border-radius: 8px; padding: 3px 7px; font-size: 13px; transition: background .12s;
+  background: none; border: none; color: var(--farm-ink); cursor: pointer;
+  border-radius: var(--r-xs); padding: 6px 9px; font-size: 13px; transition: background var(--dur-1);
 }
+/* 图标按钮：原先 ~25px 高，低于 WCAG 2.5.8 的下限，提到 32px */
+#me-edit { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; }
 #me-edit:hover, #me-name-ok:hover { background: rgba(255, 255, 255, .16); }
 #me-name-editor {
   position: absolute; bottom: calc(100% + 8px); left: 0; right: 0;
   display: flex; flex-direction: column; gap: 8px;
-  background: rgba(18, 26, 13, .92); border: 1px solid rgba(255, 255, 255, .18);
-  border-radius: 10px; padding: 10px;
+  background: var(--farm-haze-strong); border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: var(--r-md); padding: 10px;
 }
 #me-name-row { display: flex; gap: 8px; }
 #me-name-input {
   flex: 1; min-width: 0; background: rgba(0, 0, 0, .35); border: 1px solid rgba(255, 255, 255, .25);
-  color: #fff; border-radius: 6px; padding: 4px 8px; font-size: 13px; outline: none;
+  color: var(--farm-ink); border-radius: var(--r-xs); padding: 4px 8px; font-size: 13px; outline: none;
   user-select: text; -webkit-user-select: text;   /* 整场禁选，但名字要能选中改 */
 }
 #hpbar { height: 10px; background: rgba(255, 255, 255, .18); border-radius: 5px; overflow: hidden; }
@@ -457,25 +601,31 @@ body.in-farm { background: #9fd08a; }
   background: linear-gradient(90deg, #7ec850, #b8e986);
 }
 #hpfill.low { background: linear-gradient(90deg, #e05252, #ff9a6b); }
-#score { font-size: 12px; color: #cfe8b0; margin-top: 6px; }
+#score {
+  display: flex; align-items: center; gap: var(--icon-gap);
+  font-size: 12px; color: var(--farm-score); margin-top: 6px;
+}
 
-/* 提示条：桌面/触屏两套文案，靠 body.touch 二选一 */
+/* 提示条：桌面/触屏两套文案，靠 body.touch 二选一。
+   原来字色是 .85 白、玻璃是最淡的 .45 —— 叠天空只有 4.02:1。
+   .45 那一档实算下来无论怎么调字色都过不了 4.5:1，所以这一档被删掉，改用 .62。 */
 .hint {
   position: absolute; bottom: calc(16px + var(--sa-b)); left: 50%; transform: translateX(-50%);
-  color: rgba(255, 255, 255, .85); font-size: 13px; background: rgba(20, 30, 15, .45);
-  padding: 6px 14px; border-radius: 999px; white-space: nowrap;
+  color: var(--farm-ink-dim); font-size: 12px; background: var(--farm-haze);
+  padding: 6px 14px; border-radius: var(--r-pill); white-space: nowrap;
   max-width: 94vw; overflow: hidden; text-overflow: ellipsis;
 }
 #hint-desktop, #hint-touch { display: none; }
 body:not(.touch) #hint-desktop { display: block; }
 body.touch #hint-touch { display: block; }
-body.touch .hint { font-size: 11px; bottom: calc(6px + var(--sa-b)); }
+body.touch .hint { font-size: 12px; bottom: calc(6px + var(--sa-b)); }
 
-/* KO 横幅：只靠 .show 淡入淡出；不吃指针，也不占位 */
-/* 命中飘字：只做位移 + 淡出，不做缩放，免得在低配机上多一次合成 */
+/* 命中飘字：只做位移 + 淡出，不做缩放，免得在低配机上多一次合成。
+   原来 #ffe9b0 直接压在场景上（对天空 1.28:1），现在加一层 --farm-haze 药丸（5.09:1 起）。 */
 .dmg-pop {
   position: fixed; transform: translate(-50%, -50%); pointer-events: none; z-index: 8;
-  font: 700 16px/1 system-ui, "Microsoft YaHei", sans-serif; color: #ffe9b0;
+  font: 700 16px/1 system-ui, "Microsoft YaHei", sans-serif; color: var(--farm-score);
+  background: var(--farm-haze); border-radius: var(--r-pill); padding: 2px 8px;
   text-shadow: 0 1px 3px rgba(0, 0, 0, .6);
   animation: dmg-up .7s ease-out forwards;
 }
@@ -483,11 +633,17 @@ body.touch .hint { font-size: 11px; bottom: calc(6px + var(--sa-b)); }
   from { opacity: 1; margin-top: 0; }
   to { opacity: 0; margin-top: -28px; }
 }
+/* KO 横幅：只靠 .show 淡入淡出；不吃指针，也不占位。
+   原来是白字 30px 直接压在场景上（叠天空 1.53:1），靠 text-shadow 兜底 ——
+   而 text-shadow 不是对比度的合规手段。现在换成 --farm-haze-strong 药丸（6.43:1 起）。
+   要能装 #i-dizzy / #i-logo 所以改成 flex 容器；left:0/right:0 的定位保留，居中交给 flex。 */
 #ko-banner {
-  position: absolute; top: 38%; left: 0; right: 0; padding: 0 12px;
-  text-align: center; color: #fff; font-size: 30px; font-weight: bold;
+  position: absolute; top: 38%; left: 0; right: 0; padding: 10px 22px;
+  display: flex; align-items: center; justify-content: center; gap: var(--icon-gap);
+  background: var(--farm-haze-strong); border-radius: var(--r-md);
+  text-align: center; color: var(--farm-ink); font-size: 28px; font-weight: bold;
   text-shadow: 0 2px 8px rgba(0, 0, 0, .6);
-  opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 7;
+  opacity: 0; transition: opacity .2s var(--ease); pointer-events: none; z-index: 7;
 }
 #ko-banner.show { opacity: 1; }
 
@@ -523,12 +679,12 @@ body.touch #touch-ui {
   align-items: end; justify-items: center; pointer-events: none;
 }
 .tc-btn {
-  pointer-events: auto; font-weight: bold; color: #fff;
+  pointer-events: auto; font-weight: bold; color: var(--farm-ink);
   width: min(19vw, 88px); height: min(19vw, 88px); min-width: 60px; min-height: 60px;
   border-radius: 50%; border: 2px solid rgba(255, 255, 255, .45);
-  background: rgba(20, 30, 15, .42); backdrop-filter: blur(3px); font-size: 16px;
-  display: flex; align-items: center; justify-content: center;
-  transition: transform .08s, background .12s;
+  background: var(--farm-haze); backdrop-filter: blur(3px); font-size: 16px;
+  display: flex; align-items: center; justify-content: center; gap: var(--icon-gap);
+  transition: transform .08s, background var(--dur-1);
 }
 .tc-btn:active { transform: scale(.92); background: rgba(255, 217, 94, .55); }
 /* 疾跑是可切换的：JS 加 .on 表示正踩着 */
@@ -546,45 +702,54 @@ body.touch #touch-ui {
   .tc-btn { width: min(15vh, 76px); height: min(15vh, 76px); }
   .tc-btn-peck { width: min(18vh, 88px); height: min(18vh, 88px); }
   body.touch #hint-touch { display: none; }
-  /* 命中飘字：只做位移 + 淡出，不做缩放，免得在低配机上多一次合成 */
-.dmg-pop {
-  position: fixed; transform: translate(-50%, -50%); pointer-events: none; z-index: 8;
-  font: 700 16px/1 system-ui, "Microsoft YaHei", sans-serif; color: #ffe9b0;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, .6);
-  animation: dmg-up .7s ease-out forwards;
+  #ko-banner { font-size: 24px; }
 }
-@keyframes dmg-up {
-  from { opacity: 1; margin-top: 0; }
-  to { opacity: 0; margin-top: -28px; }
-}
-#ko-banner { font-size: 24px; }
+
+/* 返回键的可点区：窄屏上按 44px 的触控建议值加高（面板的窄屏段在同一个 640px
+   阈值上做的就是这件事）。只加高，不动字号与左右内边距 —— 避免窄屏上排版被撑散。
+   阈值取 640 而不是 560：561–640 那段返回键同样够不到 44px，一起管住。 */
+@media (max-width: 640px) {
+  #back-btn { min-height: 44px; }
 }
 
 /* 窄屏：低端安卓上 backdrop-filter 是合成器热点，这一档一律去掉模糊 */
 @media (max-width: 560px) {
   #back-btn, #room-state, .hud-stats, #board, #me { backdrop-filter: none; }
-  .hud-stats { font-size: 12px; padding: 6px 10px; }
-  /* min-width 会压过 max-width，想真收窄就得把它一起放掉 */
-  #board { font-size: 11px; max-width: 46vw; min-width: 0; }
+  .hud-stats { font-size: 12px; padding: 6px 8px; }
+  /* min-width 会压过 max-width，想真收窄就得把它一起放掉。
+     再套一层 --board-max：只留 46vw 的话，长名字会把榜单撑到 46vw = 147.2px
+     （320 档），让出的 145px 就不够了 —— 让位带宽与榜单上限必须是同源的两个数。 */
+  #board { font-size: 11px; max-width: min(46vw, var(--board-max)); min-width: 0; }
   #me { width: min(52vw, 220px); }
   #hpbar { height: 8px; }
-  /* 命中飘字：只做位移 + 淡出，不做缩放，免得在低配机上多一次合成 */
-.dmg-pop {
-  position: fixed; transform: translate(-50%, -50%); pointer-events: none; z-index: 8;
-  font: 700 16px/1 system-ui, "Microsoft YaHei", sans-serif; color: #ffe9b0;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, .6);
-  animation: dmg-up .7s ease-out forwards;
-}
-@keyframes dmg-up {
-  from { opacity: 1; margin-top: 0; }
-  to { opacity: 0; margin-top: -28px; }
-}
-#ko-banner { font-size: 22px; }
+  #ko-banner { font-size: 22px; }
   /* 窄屏上「我的面板」占了左边半屏，居中的提示条会压在它上面 —— 挪到右侧那条空档 */
   .hint {
     left: auto; right: calc(8px + var(--sa-r)); transform: none;
     max-width: 40vw; font-size: 11px; padding: 5px 10px;
   }
+
+  /* 让 #hud-top 的宽度确定下来（left 上一档已有，这里补 right）：宽度一确定，
+     折行位置就稳定，而不是「能撑多宽撑多宽，直到压上榜单」。
+     右侧让出的带宽 = 榜单上限 + 它的右边距，两者都不许跨过去。
+     缝从 8 收到 5：这一档的带宽是钉死的，能省的只有三项之间的缝。 */
+  #hud-top {
+    gap: 5px;
+    right: calc(var(--board-max) + 16px + var(--sa-r));
+  }
+  #back-btn { padding-inline: 7px; }    /* 93 → 81px。高度由 min-height 管，不动行高 */
+  #room-state { padding: 4px 5px; }     /* 48 → 36px。字号仍 12px，「联机」两个字完整可见 */
+}
+
+/* 中屏同根因的另一处：561–660 这段 #board 的 min-width 与 300px 内容上限
+   会挤进顶栏（实测 561 时榜单左边 247.5 < 顶栏右边 327，长名字下 576 也撞）。
+   把上限按住到它自己的 min-width —— 这段榜单恒为 --board-min，宽度就变得可预测。
+   顶栏按同一个数让位（同源，见 :root 的 --board-min）。
+   这一档顶栏行宽 311px，要 W ≥ 563 才够一行，所以 561–562
+   会折两行 —— 那 2px 今天本来就是重叠的，折行是修不是退（不折就是压着榜单）。 */
+@media (min-width: 561px) and (max-width: 660px) {
+  #board { max-width: min(46vw, var(--board-min)); }
+  #hud-top { right: calc(var(--board-min) + 16px + var(--sa-r)); }
 }
 
 @media (max-width: 900px) and (max-height: 430px) {
@@ -625,4 +790,17 @@ body.touch #touch-ui {
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
+}
+
+/* 系统开了「高对比度」：把最淡的那档灰加深，别和用户的选择对着干。
+   --line-control 必须一起覆盖：只加深 --line 的话，用户开了高对比度后
+   控件边界反而比分隔线弱（#b9bdc3 对白纸只有 1.89:1）。 */
+@media (prefers-contrast: more) {
+  :root { --ink-3: #4f545a; --line: #b9bdc3; --line-control: #7b8188; }
+  html.dark { --ink-3: #b3b9c2; --line: #454b54; --line-control: #7d848d; }
+}
+/* 强制配色（Windows 高对比度）下让图标走系统色：currentColor 会被系统换掉，
+   这里只需要别自己去调整它 */
+@media (forced-colors: active) {
+  .i { forced-color-adjust: auto; }
 }

@@ -5,6 +5,9 @@
 import * as THREE from 'three';
 import { WORLD_HALF, groundHeight, OBSTACLES } from '/shared/physics.js';
 
+// 天空色。scene.background 与 scene.fog 必须同值（见 buildScene）：场地边缘与远山正好
+// 溶进天里，看不出地面到哪儿结束。它同时是样式表里 --farm-sky 的取值来源（只是一条
+// 文档关系，CSS 里不直接用这个色）。**别改**。
 const SKY = 0xa8d8f0;
 
 // 装饰物（山丘、草叶、草地贴图）不参与碰撞，不必与服务端同步，
@@ -43,22 +46,36 @@ function groundTexture() {
 // 一个场地一份材质表，物件之间共用（同一块地面上一百多个 mesh，逐个 new 材质会多出一堆
 // shader program）。放在函数里而不是模块顶层：disposeWorld 会把材质释放掉，
 // 第二次进场必须拿到全新的，模块级的会被复用成已销毁的材质。
+//
+// 色值全部是照参考站抄的（推翻等于换一个场子），这里只做「语义分组」并立一条明度纪律，
+// 以后新增物件按纪律取色就不会挑出跳出色系的颜色：
+//   · 地表组与 .farm 的底色 #9fd08a 同色相、低一档明度，草地永远是最亮的地表；
+//   · 叶片组比草地深一档，两档之差固定，别再加第三档；
+//   · 石材是唯一的无彩色，水是唯一的冷色，干草是唯一的高明度暖黄
+//     （它与 HUD 的 --farm-accent #ffe27a 同族 —— 场景与 HUD 之间唯一的呼应点）。
 function createMaterials() {
   return {
+    // 土壤 / 木构：中明度暖棕，同一材质别用两个色相
     fence: new THREE.MeshLambertMaterial({ color: 0x9a6a3a }),
     fenceTop: new THREE.MeshLambertMaterial({ color: 0x7a5230 }),
+    trunk: new THREE.MeshLambertMaterial({ color: 0x7a5230 }),
+    // 建筑：墙面是全场最暖的一块，用来把视线引到鸡舍；coopTrim 是唯一的高明度白
     coopWall: new THREE.MeshLambertMaterial({ color: 0xb5553d }),
     coopRoof: new THREE.MeshLambertMaterial({ color: 0x6b4a3a }),
     coopDoor: new THREE.MeshLambertMaterial({ color: 0x3a2a20 }),
     coopTrim: new THREE.MeshLambertMaterial({ color: 0xf0e6d0 }),
     trough: new THREE.MeshLambertMaterial({ color: 0x8a7a5a }),
+    // 水：全场唯一的冷色，别复制到别处
     water: new THREE.MeshLambertMaterial({ color: 0x5aa7d6 }),
+    // 干草：高明度暖黄，与 --farm-accent 同族
     hay: new THREE.MeshLambertMaterial({ color: 0xd8b95a }),
-    trunk: new THREE.MeshLambertMaterial({ color: 0x7a5230 }),
+    // 叶片：树冠两档，比草地深一档
     leaf: new THREE.MeshLambertMaterial({ color: 0x4e8f3a }),
     leaf2: new THREE.MeshLambertMaterial({ color: 0x5da344 }),
+    // 石材：唯一的无彩色，明度接近草地，不抢眼。
     // flatShading：石头是多面体，平滑法线会让它看起来像颗球
     rock: new THREE.MeshLambertMaterial({ color: 0x9a9a92, flatShading: true }),
+    // 地表：与 .farm 的 #9fd08a 同色相、低一档明度
     hill: new THREE.MeshLambertMaterial({ color: 0x6f9e4b }),
     grass: new THREE.MeshLambertMaterial({ color: 0x6da33f }),
   };
@@ -142,10 +159,14 @@ export function buildScene(renderer, { lowPower = false } = {}) {
 
   const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 220);
 
-  const hemi = new THREE.HemisphereLight(0xcfe6ff, 0x8a9a5a, 0.95);
+  // lowPower 下阴影本来就被降了一档（mapSize 1024 + PCF 而不是 PCFSoft），所以环境光
+  // 提一点补回失去的层次、太阳降一点让阴影边界不那么锐。
+  // 视锥、bias、mapSize、outputColorSpace、shadowMap.type 都不要动 —— 那是调过的值，
+  // 动了容易回到阴影痤疮。
+  const hemi = new THREE.HemisphereLight(0xcfe6ff, 0x8a9a5a, lowPower ? 1.05 : 0.95);
   scene.add(hemi);
 
-  const sun = new THREE.DirectionalLight(0xfff2d8, 1.6);
+  const sun = new THREE.DirectionalLight(0xfff2d8, lowPower ? 1.45 : 1.6);
   sun.position.set(24, 34, 12);
   sun.castShadow = true;
   sun.shadow.mapSize.set(lowPower ? 1024 : 2048, lowPower ? 1024 : 2048);
