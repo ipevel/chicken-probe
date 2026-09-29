@@ -2,9 +2,12 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<!-- viewport-fit=cover：让 CSS 的 env(safe-area-inset-*) 在刘海屏生效；
-     user-scalable=no：鸡场里捏合会连整个画布一起缩掉，禁掉缩放 -->
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<!-- viewport-fit=cover：让 CSS 的 env(safe-area-inset-*) 在刘海屏生效。
+     不再写 maximum-scale=1,user-scalable=no：那会禁掉缩放，违反 WCAG 1.4.4，
+     而面板上还有 11px 的标签和 13px 的输入框——低视力用户唯一的补救手段就是放大。
+     鸡场里捏合会连画布一起缩放，那是鸡场自己的事，用 touch-action 在画布上拦，
+     不要拿整页的可缩放性去换。 -->
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#9fd08a">
 <meta name="mobile-web-app-capable" content="yes">
 <title>养鸡探针</title>
@@ -20,7 +23,9 @@
   })();
 </script>
 <script type="importmap">{ "imports": { "three": "/vendor/three.module.js" } }</script>
-<link rel="modulepreload" href="/vendor/three.module.js">
+<!-- 这里刻意不预载 three：面板是主界面，而 three 只在进鸡场时才被
+     farm.js 用 await import() 按需拉取。modulepreload 会把 ~2MB（gzip ~397KB）
+     连带依赖一起抓下来，让不进鸡场的人也付这份流量与解析成本。 -->
 </head>
 <body>
 <div id="boot">🐔 鸡场加载中…</div>

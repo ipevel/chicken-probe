@@ -124,9 +124,31 @@ export function downsample(values, target) {
   return out;
 }
 
+/**
+ * 把历史接口的 ts 统一成毫秒。
+ *
+ * hub 的 /metrics 与 /ping 返回的 ts 是「秒」（主题 B 里 `raw.ts * 1_000` 就是
+ * 按秒换算的），而这里原来直接把 row.ts 交给 new Date()：按秒当毫秒读，
+ * 2026 年的时间会显示成 1970/1/21，差了 56 年。轴标签与悬停读数都受影响。
+ *
+ * 这里按量级判断而不是硬写 ×1000：两种单位都能正确显示，将来 hub 换成毫秒
+ * 也不用改这个文件。阈值取 1e12（约公元 33658 年的毫秒数），常见的秒级时间戳
+ * （1.7e9）与毫秒级（1.7e12）分得开，且不会把任何一个正常时间判错。
+ */
+export function toMillis(ts) {
+  // 只接受数字本身与非空数字串。不走裸 Number()：Number(null) 是 0、
+  // Number('') 也是 0、Number([]) 还是 0——缺失的 ts 会被静默当成
+  // 1970-01-01 画出来，比显示「无数据」更误导。
+  if (typeof ts !== 'number' && typeof ts !== 'string') return NaN;
+  if (typeof ts === 'string' && ts.trim() === '') return NaN;
+  const n = typeof ts === 'number' ? ts : Number(ts);
+  if (!Number.isFinite(n)) return NaN;
+  return n < 1e12 ? n * 1000 : n;
+}
+
 /** 时间戳 → 轴标签。跨度决定精度：24 小时内给时:分，超过给月-日。 */
 export function clockLabel(ts, hours) {
-  const d = new Date(ts);
+  const d = new Date(toMillis(ts));
   const p = (n) => String(n).padStart(2, '0');
   if (hours > 48) return `${d.getMonth() + 1}-${p(d.getDate())}`;
   return `${p(d.getHours())}:${p(d.getMinutes())}`;

@@ -116,7 +116,18 @@ const server = createServer(async (req, res) => {
     res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end('联机服务只提供 WebSocket；主题由 monitor hub 托管');
     return;
   }
-  const clean = decodeURIComponent(pathname).replace(/\\/g, '/').split('/').filter(x => x && x !== '.').join('/');
+  // decodeURIComponent 对畸形编码（/% 、/%zz 、/a%2）会抛 URIError。
+  // 这段在 async handler 里，抛出去就是未捕获 rejection，Node 默认直接结束进程——
+  // 一个未认证的 GET 就能把整个房间打掉。所以必须就地兜住。
+  let decoded;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    res.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' }).end('bad request');
+    return;
+  }
+  const clean = decoded.replace(/\\/g, '/').split('/').filter(x => x && x !== '.').join('/');
+
   if (clean.split('/').includes('..')) { res.writeHead(403).end('forbidden'); return; }
   const full = join(staticRoot, clean || 'index.html');
   try {

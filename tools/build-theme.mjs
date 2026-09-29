@@ -58,6 +58,9 @@ await mkdir(join(DIST, 'vendor'), { recursive: true });
 await cp(join(THREE_BUILD, 'three.module.js'), join(DIST, 'vendor', 'three.module.js'));
 // three.module.js 依赖 three.core.js（three 的模块化拆分），漏了会导致浏览器动态 import 失败、鸡场进不去
 await cp(join(THREE_BUILD, 'three.core.js'), join(DIST, 'vendor', 'three.core.js'));
+// 再分发 three.js 必须随附它的版权声明与许可全文（MIT 明文要求），
+// 所以把第三方声明一起放发布包根目录——只拷 JS 本体是不合规的。
+await cp(join(ROOT, 'THIRD_PARTY_NOTICES.md'), join(DIST, 'THIRD_PARTY_NOTICES.md'));
 
 const files = await walk(DIST);
 const unpacked = files.reduce((s, f) => s + f.size, 0);
@@ -74,6 +77,16 @@ if (!files.some(f => f.rel === 'theme.json')) problems.push('缺 theme.json');
 if (!files.some(f => f.rel === 'vendor/three.module.js')) problems.push('缺 vendor/three.module.js');
 if (!files.some(f => f.rel === 'vendor/three.core.js')) problems.push('缺 vendor/three.core.js（three.module.js 的依赖，漏了鸡场进不去）');
 if (!files.some(f => f.rel === 'shared/physics.js')) problems.push('缺 shared/physics.js（客户端按根路径引用它）');
+// 许可证是再分发的硬条件，不是"最好有"：漏掉它整个包就不该发出去。
+// 这里连同"声明里必须点名 three"一起查，防止文件在但内容被清空。
+if (!files.some(f => f.rel === 'THIRD_PARTY_NOTICES.md')) {
+  problems.push('缺 THIRD_PARTY_NOTICES.md（再分发 three.js 必须随附其 MIT 许可全文）');
+} else {
+  const notices = await readFile(join(DIST, 'THIRD_PARTY_NOTICES.md'), 'utf8');
+  if (!/three\.js/.test(notices) || !/MIT License/.test(notices)) {
+    problems.push('THIRD_PARTY_NOTICES.md 里没有 three.js 的 MIT 许可全文');
+  }
+}
 for (const f of files) {
   if (/\s/.test(f.rel)) problems.push(`文件名含空格，hub 的静态服务要按 URL 编码处理：${f.rel}`);
 }

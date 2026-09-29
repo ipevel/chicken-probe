@@ -77,7 +77,15 @@ const json = (res, body, code = 200) => {
  *   shared/  → 与物理共用的代码（打包时复制进 dist/shared/）
  */
 function resolveFile(pathname) {
-  const clean = decodeURIComponent(pathname)
+  // 畸形百分号编码会让 decodeURIComponent 抛 URIError。调用方是 async handler，
+  // 抛出去即未捕获 rejection → 进程退出，所以这里返回 null 当作越界处理。
+  let decoded;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return null;
+  }
+  const clean = decoded
     .replace(/\\/g, '/')
     .split('/')
     .filter(s => s && s !== '.')

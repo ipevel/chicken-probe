@@ -1,0 +1,102 @@
+name: CI
+
+# 主题 B（monitor-theme-monitor-simple）一直有 CI，主题 A 此前是零 CI：
+# 78 项测试、依赖安装、主题打包都得靠部署时在目标机上拿真环境试。
+# 这个仓库没有构建链（importmap + 原生 ESM），所以 CI 只做三件确定的事：
+# 跑测试、跑构建、确认没有把私钥/配置提交进去。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 默认给最小权限，需要写权限的 job 自己声明。
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 声明的下限是 18；18 与当前 LTS 都跑，免得只用最新版测出一个
+        # "线上 18 能跑、CI 从没见过" 的假绿灯。
+        node: ['18', '22']
+    steps:
+      # 按完整 commit SHA 固定，不用浮动 tag：tag 是可被上游改写的引用，
+      # 一次上游被入侵就能让本仓库以我们的凭据执行任意代码。
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - name: 安装依赖
+        run: npm ci --omit=dev
+      - name: 跑测试
+        run: npm test
+
+  # 依赖漏洞扫描与构建分开做：npm audit 的失败原因和"测试没过"是两回事，
+  # 混在一个 job 里看日志时要靠猜。
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: 生产依赖漏洞扫描（高危阻断）
+        # 只看生产依赖：devDependencies 不进部署包，把它们的告警也拉进来
+        # 只会让这个 job 常年变红，最后所有人都学会忽略它。
+        run: npm audit --audit-level=high --omit=dev
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: '22'
+          cache: npm
+      - name: 安装依赖
+        run: npm ci --omit=dev
+      - name: 打包主题
+        run: npm run build:dist
+      - name: 确认主题包生成
+        run: |
+          test -f build/theme.tar.gz
+          ls -lh build/theme.tar.gz
+      - name: 上传主题包
+        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4.5.0
+        with:
+          name: theme-tarball
+          path: build/theme.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  # 仓库卫生：部署脚本与 CI 都会读这个仓库，别让不该进版本库的东西进去。
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: 确认没有提交密钥与本地配置
+        run: |
+          fail=0
+          # server/config.json 是部署时按环境生成的，不该进版本库
+          if git ls-files --error-unmatch server/config.json >/dev/null 2>&1; then
+            echo "::error::server/config.json 被提交进了仓库（应由 deploy.sh 生成）"
+            fail=1
+          fi
+          # 私钥与证书
+          if git ls-files | grep -Ei '\.(pem|key|p12|pfx)$|id_rsa|id_ed25519'; then
+            echo "::error::仓库里出现疑似私钥文件"
+            fail=1
+          fi
+          # 构建产物不该被跟踪
+          if git ls-files | grep -E '^(build|dist|node_modules)/'; then
+            echo "::error::构建产物被提交进了仓库"
+            fail=1
+          fi
+          exit $fail

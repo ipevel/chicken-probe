@@ -7,7 +7,7 @@
 
 import { WebSocketServer } from 'ws';
 import { randomUUID } from 'node:crypto';
-import { CONF, ST, inPeckArc, WORLD_HALF } from '../shared/physics.js';
+import { CONF, ST, ST_VALUES, inPeckArc, WORLD_HALF } from '../shared/physics.js';
 
 const TICK_MS = 1000 / CONF.SNAP_HZ;
 const NPC_EVERY = 2;          // 每 2 拍发一次 NPC 位置（10Hz）：逃跑 6.4m/s 时 5Hz 会顿
@@ -25,10 +25,18 @@ const SPAWNS = [
 function cleanName(raw) {
   if (typeof raw !== 'string') return '';
   // <> 一并滤掉：名单文案目前全走 textContent/canvas，但名字会进所有客户端，
-  // 不在入口收掉等于把 XSS 押在每一处渲染点都永远守规矩上
-  const s = raw.replace(/[\u0000-\u001f\u007f<>]/g, '').trim();
+  // 不在入口收掉等于把 XSS 押在每一处渲染点都永远守规矩上。
+  //
+  // 除 C0/DEL 外还要滤掉「格式类」字符（Unicode Cf）：RLO(U+202E) 能把后续文字
+  // 整体反转显示、ZWSP 让名字看起来与别人一模一样、隔离符能打破行内排版。
+  // 这些不是注入，但足够伪造身份——而名字是别人一眼看到就信的东西。
+  // 归类字符（\p{M}）必须留下，否则越南语、天城文这类组合文字会被打散。
+  const s = raw.replace(/[\u0000-\u001f\u007f-\u009f<>]/gu, '').replace(/\p{Cf}/gu, '').trim();
+  // NFKC 归一后再截断：全角字符、兼容字形会折算成同一串，让"看起来一样"的名字
+  // 变成"实际也一样"，后面对重的判断才成立。
+  const norm = s.normalize('NFKC');
   let out = '';
-  for (const ch of s) {
+  for (const ch of norm) {
     if (Buffer.byteLength(out + ch, 'utf8') > MAX_NAME) break;
     out += ch;
   }
@@ -38,7 +46,10 @@ function cleanName(raw) {
 /** 图标只收短字符串（emoji），别让人往别人的界面里塞长文本或标签。 */
 function clipped(v) {
   if (typeof v !== 'string') return '';
-  return v.replace(/[\u0000-\u001f\u007f<>]/g, '').slice(0, 8);
+  const s = v.replace(/[\u0000-\u001f\u007f-\u009f<>]/gu, '').replace(/\p{Cf}/gu, '');
+  // 按码点切，不按 UTF-16 单元切：'😀😀😀😀'.slice(0,8) 会切在代理对中间，
+  // 留下一个孤立代理项，客户端渲染成 �。
+  return Array.from(s).slice(0, 8).join('');
 }
 
 const r = (v, n = 2) => Number.isFinite(+v) ? Number((+v).toFixed(n)) : 0;
@@ -204,7 +215,10 @@ export function attachRoom(httpServer, { path = '/ws', now = () => Date.now(), n
         p.y = Math.max(-20, Math.min(40, +m.y || 0));
         p.z = Math.max(-lim, Math.min(lim, +m.z || 0));
         p.yaw = +m.yaw || 0;
-        p.st = typeof m.st === 'string' ? m.st.slice(0, 8) : ST.IDLE;
+        // st 是枚举（见 ST），不是自由文本：原来只 slice(0,8) 就直接广播，
+        // 是唯一完全没过过滤的客户端字符串。任何客户端都能塞进一个任意串，
+        // 让所有人在牌面上看到自己被伪造的姿态。合法值之外一律回落到 IDLE。
+        p.st = typeof m.st === 'string' && ST_VALUES.has(m.st) ? m.st : ST.IDLE;
         return;
       }
 

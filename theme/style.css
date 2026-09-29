@@ -7,13 +7,21 @@
   --paper: #ffffff;
   --ink: #16181c;
   --ink-2: #5b6068;
-  --ink-3: #8b9199;
+  /* 3.18:1 的白底对比度不达 AA（11px 标签用它），降到 #6b7178 拿到 4.5:1 以上。
+     这个值是量出来的，不是看着顺眼选的。 */
+  --ink-3: #6b7178;
   --line: #e5e7ea;
   --line-2: #d2d5da;
-  --accent: #6aa84f;
+  /* 作为文字用时原色只有 2.87:1；压深到 #4a7a37（4.6:1）。
+     填充/描边仍可继续用原色，故另留一个 accent-fill。 */
+  --accent: #4a7a37;
+  --accent-fill: #6aa84f;
   --accent-soft: #eaf3e4;
-  --warn: #d98f2b;
-  --danger: #d1453b;
+  /* 原色 #d98f2b 作文字仅 2.65:1，同样不达 AA；#a15c07 为 4.6:1。 */
+  --warn: #a15c07;
+  --warn-fill: #d98f2b;
+  --danger: #c2221a;
+  --danger-fill: #d1453b;
   --shadow: 0 1px 2px rgba(20, 22, 26, .06), 0 6px 20px rgba(20, 22, 26, .05);
   --radius: 12px;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -27,6 +35,14 @@
   --c-ping-2: #c9821f;
   --c-ping-3: #7a4fa8;
   --c-ping-4: #2f8f7f;
+  /* 分段计量条的「指标标识色」。
+     与告警色分开：读数正常时用这几个色相表达"这是哪个指标"，
+     越过 80%/92% 阈值后整条换成 warn/danger——静默时颜色是身份，
+     越线时才是告警，两者不会互相冒充。 */
+  --m-cpu: #3f7fb5;
+  --m-mem: #7a4fa8;
+  --m-disk: #9c6b28;
+  --m-load: #b0507a;
 }
 
 html.dark {
@@ -34,13 +50,17 @@ html.dark {
   --paper: #1c1f24;
   --ink: #eceef1;
   --ink-2: #a5abb4;
-  --ink-3: #7b828c;
+  /* 4.26:1 不够 4.5:1，提亮到 #8d949e（约 4.8:1）。 */
+  --ink-3: #8d949e;
   --line: #2a2e35;
   --line-2: #383d45;
   --accent: #9fd08a;
+  --accent-fill: #9fd08a;
   --accent-soft: #23301f;
   --warn: #e0a951;
+  --warn-fill: #e0a951;
   --danger: #e8695e;
+  --danger-fill: #e8695e;
   --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 6px 20px rgba(0, 0, 0, .3);
   /* 暗色下把线提亮，否则深底上的深线看不清 */
   --c-cpu: #8fd06a;
@@ -176,17 +196,42 @@ button, select, input { font: inherit; color: inherit; }
 .pill.quota, .pill.stale, .pill.expiring { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, var(--line)); }
 .pill.unconnected { color: var(--ink-3); }
 
-.nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0 6px; }
+/* 2×2 指标区：CPU/内存 一行，硬盘/负载 一行。
+   负载从原先的 mid 行提上来当第四个读数——它按核数折算后本来就是个占用率，
+   配一条同样的计量条才说得通。 */
+.nums { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 14px; margin: 10px 0 6px; }
 .num .k { font-size: 11px; color: var(--ink-3); }
 .num .v { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .num .v.muted { color: var(--ink-3); font-weight: 500; }
 .num .v.warn { color: var(--warn); }
 .num .v.danger { color: var(--danger); }
+/* 标签与读数同排：目标稿里 "CPU 11.71%" 是左边标签、右边数值。
+   数值靠 auto 推右，中间用 gap 撑开，窄卡也不会挤在一起。 */
+.num .head { display: flex; align-items: baseline; gap: 6px; }
+.num .head .v { margin-left: auto; }
+.num .sub { font-size: 10px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+/* 分段计量条：16 格，已填 round(百分比 × 16) 格。
+   等宽格让"八成满"和"九成满"能被一眼数出来，连续条在 300px 宽、3px 高的
+   尺度上只能读出"差不多"。格间 1px 间隙，不依赖颜色区分——色盲用户数格数即可。 */
+.seg { display: flex; gap: 1px; height: 6px; margin-top: 5px; }
+.seg > i {
+  flex: 1 1 0; min-width: 0; border-radius: 1px;
+  background: var(--line);
+}
+/* 正常读数：用指标的标识色，表达"这是哪个指标"而不是状态 */
+.seg.cpu > i.on { background: var(--m-cpu); }
+.seg.mem > i.on { background: var(--m-mem); }
+.seg.disk > i.on { background: var(--m-disk); }
+.seg.load > i.on { background: var(--m-load); }
+.seg > i.on.warn { background: var(--warn-fill); }
+.seg > i.on.danger { background: var(--danger-fill); }
+.seg.dim > i.on { background: var(--line-2); }
 
 .bar { height: 3px; border-radius: 2px; background: var(--line); margin-top: 4px; overflow: hidden; }
 .bar > i { display: block; height: 100%; background: var(--ink-3); }
-.bar > i.warn { background: var(--warn); }
-.bar > i.danger { background: var(--danger); }
+.bar > i.warn { background: var(--warn-fill); }
+.bar > i.danger { background: var(--danger-fill); }
 .bar.half { height: 2px; }
 
 .card-mid { display: flex; flex-direction: column; gap: 7px; margin-top: 8px; }
@@ -230,6 +275,8 @@ button, select, input { font: inherit; color: inherit; }
 .drawer .facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 12.5px; }
 .drawer .facts dt { color: var(--ink-3); }
 .drawer .facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+/* 抽屉里的分段条：与卡片同规则同配色，宽度限制一下不要横贯整行 */
+.drawer .facts .drawer-seg { max-width: 168px; margin-top: 4px; }
 .drawer h3 { font-size: 12px; color: var(--ink-3); margin: 18px 0 6px; font-weight: 500; letter-spacing: .4px; }
 .spark { width: 100%; height: 46px; display: block; }
 .spark path { fill: none; stroke: var(--accent); stroke-width: 1.6; }
@@ -298,7 +345,7 @@ button, select, input { font: inherit; color: inherit; }
 /* 进鸡场时连 body 也换成草地色：iOS 回弹时露出来的才是绿的 */
 body.in-farm { background: #9fd08a; }
 #app { position: absolute; inset: 0; }
-#app canvas { display: block; }
+#app canvas { display: block; touch-action: none; }
 
 /* 安全区：刘海/小白条只算一次，后面每条边都少写一遍 env() */
 :root {
@@ -555,6 +602,25 @@ body.touch #touch-ui {
   .grid.list .nums { margin: 10px 0 6px; }
   .grid.list .card-foot { justify-content: space-between; padding-top: 8px; border-top: 1px solid var(--line); }
   .cell { flex: 1 1 44%; }
+
+  /* 手指不是鼠标：筛选胶囊、视图切换和搜索框在这之前只有 26~30px 高，
+     低于 WCAG 2.5.8 的 24px 下限，也远低于各家 44px 的建议值。
+     只加高点击区、不动字号，避免窄屏上排版被撑散。 */
+  .chip { padding: 8px 13px; }
+  .ghost, .ghost.icon { padding: 9px 12px; }
+  .viewtoggle button { padding: 9px 12px; }
+  .controls select, .controls input[type="search"] { padding: 8px 10px; }
+  .controls input[type="search"] { min-width: 0; flex: 1 1 100%; }
+  .top-actions { margin-left: 0; width: 100%; }
+
+  /* 刘海屏与手势条：面板自己的内边距要躲开安全区，否则横屏时
+     最左/最右一列卡片会被圆角切掉。 */
+  .panel {
+    padding-left: max(12px, var(--sa-l, 0px));
+    padding-right: max(12px, var(--sa-r, 0px));
+    padding-bottom: max(40px, var(--sa-b, 0px));
+  }
+  .drawer { padding-bottom: var(--sa-b, 0px); }
 }
 
 @media (prefers-reduced-motion: reduce) {

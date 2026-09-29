@@ -1,8 +1,43 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  niceTicks, timeTicks, project, stats, alignByTs, downsample, clockLabel,
+  niceTicks, timeTicks, project, stats, alignByTs, downsample, clockLabel, toMillis,
 } from '../shared/chart.js';
+
+// 历史接口的 ts 是秒，而轴标签与悬停读数都要造 Date。按秒当毫秒读会把
+// 2026 年显示成 1970/1/21（差 56 年）——这条用例把这个错误钉住。
+test('ts 按秒与毫秒两种单位都能换算到同一个时刻', () => {
+  const seconds = 1770000000;
+  const millis = 1770000000000;
+  assert.equal(toMillis(seconds), millis);
+  assert.equal(toMillis(millis), millis);
+  // 换出来的年份必须是 2026，而不是 1970。
+  const d = new Date(toMillis(seconds));
+  assert.equal(d.getFullYear(), 2026, `按秒的 ts 应换算到 2026 年，实得 ${d.getFullYear()}`);
+  assert.equal(new Date(millis).getFullYear(), 2026);
+});
+
+test('toMillis 对坏输入给 NaN，不伪造出一个时间', () => {
+  // null 与空串要特别小心：Number(null) 与 Number('') 都是 0，
+  // 裸转会得到一个 1970-01-01 的"合法"时间戳。
+  for (const bad of [null, undefined, 'abc', NaN, Infinity, -Infinity, {}, '', []]) {
+    assert.ok(Number.isNaN(toMillis(bad)), `${JSON.stringify(bad)} 应为 NaN`);
+  }
+  // 数字串正常接受。
+  assert.equal(toMillis('1770000000'), 1770000000000);
+});
+
+test('clockLabel 用秒或毫秒给同一对标签', () => {
+  const s = 1770000000;
+  const m = 1770000000000;
+  assert.equal(clockLabel(s, 1), clockLabel(m, 1));
+  assert.equal(clockLabel(s, 168), clockLabel(m, 168));
+  // 修复前 clockLabel(秒) 会拿 1.77e9 当毫秒，得到 1970 年；
+  // 显式断言换算后的年份，防止有人把 toMillis 从 clockLabel 里拿掉。
+  const d = new Date(toMillis(s));
+  assert.equal(d.getFullYear(), 2026);
+  assert.equal(clockLabel(s, 168), `${d.getMonth() + 1}-${String(d.getDate()).padStart(2, '0')}`);
+});
 
 test('刻度落在 1/2/5 的倍数上，且覆盖数据范围', () => {
   const t = niceTicks(0, 97, 4);

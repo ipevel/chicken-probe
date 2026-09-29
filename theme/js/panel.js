@@ -17,6 +17,24 @@ import { stats as seriesStats, alignByTs } from '/shared/chart.js';
 
 const $ = (id) => document.getElementById(id);
 
+// ---- 分段计量条的统一规则 ----
+//
+// 一格代表 1/16 容量，已填格数 = round(百分比 × 16)。
+// 规则必须在模块作用域只有一份：卡片和详情抽屉会画同一个读数，两处一旦分叉，
+// 同一个 76.53% 会显示成不同的格数，比根本不给这个可视化更糟。
+// 用 round 而不是 floor：0.7653 × 16 = 12.24，四舍五入得 12 格；floor 会少画一格，
+// 让一台机器在一排卡片里显得比实际更空。
+const SEGMENTS = 16;
+function segCount(pctVal) {
+  if (pctVal == null || !Number.isFinite(pctVal) || pctVal <= 0) return 0;
+  return Math.max(1, Math.min(SEGMENTS, Math.round((Math.min(pctVal, 100) / 100) * SEGMENTS)));
+}
+// 负载折算成核数占比：load1 本身没有分母就无法与阈值比较。
+function loadPctOf(node) {
+  const load1 = node.metrics?.load?.[0];
+  return load1 == null || !node.cpu_cores ? null : (load1 / node.cpu_cores) * 100;
+}
+
 const FILTERS = [
   { key: 'all', label: '全部' },
   { key: 'alert', label: '告警' },
@@ -168,17 +186,28 @@ export function createPanel({ onEnterFarm } = {}) {
     head.append(flag, name, pill);
 
     const nums = el('div', 'nums');
-    const mk = (k) => {
+    const mk = (k, metric) => {
       const box = el('div', 'num');
+      const head = el('div', 'head');
+      const key = el('div', 'k', k);
       const v = el('div', 'v');
-      const bar = el('div', 'bar');
-      const fill = el('i');
-      bar.append(fill);
-      box.append(el('div', 'k', k), v, bar);
+      head.append(key, v);
+      const sub = el('div', 'sub');
+      // 分段条的每一格都是独立元素；条本身 aria-hidden——它是读数的重复表达，
+      // 精确值就在上面的数字里，读屏不该再念 16 个方块。
+      const seg = el('div', `seg ${metric}`);
+      seg.setAttribute('aria-hidden', 'true');
+      const cells = [];
+      for (let i = 0; i < SEGMENTS; i += 1) {
+        const cell = el('i');
+        seg.append(cell);
+        cells.push(cell);
+      }
+      box.append(head, sub, seg);
       nums.append(box);
-      return { v, fill };
+      return { v, sub, seg, cells };
     };
-    const cpu = mk('CPU'), mem = mk('内存'), disk = mk('硬盘');
+    const cpu = mk('CPU', 'cpu'), mem = mk('内存', 'mem'), disk = mk('硬盘', 'disk'), load = mk('负载', 'load');
 
     const mid = el('div', 'card-mid');
     const mkMid = (k) => {
@@ -194,7 +223,7 @@ export function createPanel({ onEnterFarm } = {}) {
       mid.append(box);
       return { b, fill };
     };
-    const load = mkMid('负载');
+    // 负载已提到上面的 2×2 指标区，这里只剩速率。
     const net = mkMid('速率');
 
     const quota = el('div', 'quota');
@@ -235,27 +264,45 @@ export function createPanel({ onEnterFarm } = {}) {
     p.pill.className = `pill ${st}`;
 
     const m = node.metrics;
-    const set = (part, value, pctVal) => {
+    // 分段条：填 round(百分比 × 16) 格，越线时整条换成告警色。
+    // 过期/离线的节点一格都不填，并加 dim 让轨道退到 line-2——「没有数据」
+    // 绝不能画成「用量很低」。
+    const paint = (part, pctVal, tone, dimmed) => {
+      const n = dimmed ? 0 : segCount(pctVal);
+      part.cells.forEach((cell, i) => {
+        cell.className = i < n
+          ? (tone === 'warn' ? 'on warn' : tone === 'danger' ? 'on danger' : 'on')
+          : '';
+      });
+      part.seg.classList.toggle('dim', !!dimmed);
+    };
+    const set = (part, value, pctVal, sub) => {
       part.v.textContent = value;
       const t = toneOf(pctVal);
       part.v.className = `v${dead ? ' muted' : t === 'ok' ? '' : ' ' + t}`;
-      part.fill.style.width = pctVal == null ? '0' : `${Math.min(100, Math.max(0, pctVal))}%`;
-      part.fill.className = dead ? '' : (t === 'ok' ? '' : t);
+      if (part.sub) part.sub.textContent = sub || '';
+      paint(part, dead ? null : pctVal, t, dead);
     };
 
-    set(p.cpu, m?.cpu == null ? '—' : `${m.cpu.toFixed(1)}%`, dead ? null : m?.cpu ?? null);
+    set(p.cpu, m?.cpu == null ? '—' : `${m.cpu.toFixed(1)}%`, m?.cpu ?? null,
+      node.cpu_cores ? `${node.cpu_cores} 核` : '');
     const memP = pct(m?.mem_used, m?.mem_total);
     const diskP = pct(m?.disk_used, m?.disk_total);
-    set(p.mem, memP == null ? '—' : `${memP.toFixed(0)}%`, dead ? null : memP);
-    set(p.disk, diskP == null ? '—' : `${diskP.toFixed(0)}%`, dead ? null : diskP);
+    set(p.mem, memP == null ? '—' : `${memP.toFixed(0)}%`, memP,
+      m?.mem_total ? `${formatBytesShort(m.mem_used || 0)} / ${formatBytesShort(m.mem_total)}` : '');
+    set(p.disk, diskP == null ? '—' : `${diskP.toFixed(0)}%`, diskP,
+      m?.disk_total ? `${formatBytesShort(m.disk_used || 0)} / ${formatBytesShort(m.disk_total)}` : '');
 
-    // 负载按核数读：load1 是核数多少倍才是关键，光给数值没有意义
+    // 负载按核数读：load1 是核数多少倍才是关键，光给数值没有意义。
+    // 条按折算后的占用率画，副行给出原始均值与分母——运维口头报的是前者，
+    // 只有后者才谈得上跟阈值比。
     const load1 = m?.load?.[0];
-    p.load.b.textContent = load1 == null ? '—' : `${load1.toFixed(2)} / ${node.cpu_cores || '?'} 核`;
+    const loadPct = load1 == null || !node.cpu_cores ? null : (load1 / node.cpu_cores) * 100;
     const lt = dead ? 'ok' : loadTone(node);
-    p.load.b.className = lt === 'ok' ? '' : lt;
-    p.load.fill.style.width = load1 == null || !node.cpu_cores ? '0' : `${Math.min(100, (load1 / node.cpu_cores) * 50)}%`;
-    p.load.fill.className = lt === 'ok' ? '' : lt;
+    p.load.v.textContent = loadPct == null ? '—' : `${loadPct.toFixed(1)}%`;
+    p.load.v.className = `v${dead ? ' muted' : lt === 'ok' ? '' : ' ' + lt}`;
+    p.load.sub.textContent = load1 == null ? '' : `${load1.toFixed(2)} / ${node.cpu_cores || '?'} 核`;
+    paint(p.load, dead ? null : loadPct, lt, dead);
 
     const rx = m?.net_rx, tx = m?.net_tx;
     const busy = (rx ?? 0) + (tx ?? 0) > 100 * 1024;
@@ -365,27 +412,51 @@ export function createPanel({ onEnterFarm } = {}) {
   function facts(node, now) {
     const m = node.metrics;
     const rows = [];
-    const add = (k, v) => rows.push([k, v]);
+    // 第三个参数带百分比时，这一行会额外画一条与卡片同规则的分段条。
+    // 抽屉原先只有一堆文本，比打开它的卡片还难读——卡片有四条计量条，
+    // 详情页零可视化。这是目标稿做对、而现状做错的一点。
+    const add = (k, v, pctVal, metric) => rows.push([k, v, pctVal, metric]);
     add('状态', `${STATUS_LABEL[statusOf(node, now)]}${statusNote(node, now) ? ' · ' + statusNote(node, now) : ''}`);
+    add('运行时长', m?.uptime != null ? formatAge(m.uptime) : '—');
+    add('处理器', `${node.cpu_name || '—'} · ${node.cpu_cores || 0} 核`,
+      m?.cpu ?? null, 'cpu');
+    add('内存', m?.mem_total ? `${formatBytes(m.mem_used)} / ${formatBytes(m.mem_total)}` : '—',
+      pct(m?.mem_used, m?.mem_total), 'mem');
+    add('硬盘', m?.disk_total ? `${formatBytes(m.disk_used)} / ${formatBytes(m.disk_total)}` : '—',
+      pct(m?.disk_used, m?.disk_total), 'disk');
+    add('负载', m?.load ? `${m.load.map(x => x.toFixed(2)).join('  ')}${node.cpu_cores ? ` / ${node.cpu_cores} 核` : ''}` : '—',
+      loadPctOf(node), 'load');
+    add('本月流量', `${formatBytes(monthUsage(node), 1)}${node.traffic_limit > 0 ? ` / ${formatBytes(node.traffic_limit, 0)}` : '（无限）'}`,
+      node.traffic_limit > 0 ? (monthUsage(node) / node.traffic_limit) * 100 : null, 'disk');
     add('系统', `${node.os || '—'} · ${node.kernel || '—'}`);
-    add('处理器', `${node.cpu_name || '—'} · ${node.cpu_cores || 0} 核`);
-    add('内存', m?.mem_total ? `${formatBytes(m.mem_used)} / ${formatBytes(m.mem_total)}` : '—');
-    add('交换', m?.swap_total ? `${formatBytes(m.swap_used)} / ${formatBytes(m.swap_total)}` : '—');
-    add('硬盘', m?.disk_total ? `${formatBytes(m.disk_used)} / ${formatBytes(m.disk_total)}` : '—');
     add('架构', `${node.arch || '—'} · ${node.virt || '—'}`);
-    add('负载', m?.load ? m.load.map(x => x.toFixed(2)).join('  ') : '—');
+    add('交换', m?.swap_total ? `${formatBytes(m.swap_used)} / ${formatBytes(m.swap_total)}` : '—');
     add('实时速率', m?.net_rx != null ? `↑ ${formatSpeed(m.net_tx)}  ↓ ${formatSpeed(m.net_rx)}` : '—');
     add('今日流量', `↑ ${formatBytes(node.day_tx)}  ↓ ${formatBytes(node.day_rx)}`);
-    add('本月流量', `${formatBytes(monthUsage(node), 1)}${node.traffic_limit > 0 ? ` / ${formatBytes(node.traffic_limit, 0)}` : '（无限）'}`);
     add('累计流量', `↑ ${formatBytes(node.total_tx)}  ↓ ${formatBytes(node.total_rx)}`);
     add('续费', node.price > 0 ? `${node.price} ${node.currency} · ${node.billing_cycle}${expiringIn(node, now) != null ? ` · 还有 ${formatDays(expiringIn(node, now))}` : ''}` : '—');
     add('探针版本', node.agent_version || '未接入');
     add('连接数', m && (m.tcp != null || m.udp != null) ? `TCP ${m.tcp ?? '—'} · UDP ${m.udp ?? '—'} · 进程 ${m.procs ?? '—'}` : '—');
-    add('运行时长', m?.uptime != null ? formatAge(m.uptime) : '—');
     if (staleFor(node, now)) add('读数停止', `${formatAge(staleFor(node, now))}前`);
 
     const dl = el('dl', 'facts drawer-facts');
-    for (const [k, v] of rows) dl.append(el('dt', null, k), el('dd', null, v));
+    for (const [k, v, pctVal, metric] of rows) {
+      dl.append(el('dt', null, k));
+      const dd = el('dd', null, v);
+      if (pctVal != null && metric) {
+        const t = toneOf(pctVal);
+        const seg = el('div', `seg ${metric} drawer-seg`);
+        seg.setAttribute('aria-hidden', 'true');
+        const n = segCount(pctVal);
+        for (let i = 0; i < SEGMENTS; i += 1) {
+          const cell = el('i');
+          if (i < n) cell.className = t === 'warn' ? 'on warn' : t === 'danger' ? 'on danger' : 'on';
+          seg.append(cell);
+        }
+        dd.append(seg);
+      }
+      dl.append(dd);
+    }
     return dl;
   }
 

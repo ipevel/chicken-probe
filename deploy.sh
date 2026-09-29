@@ -20,6 +20,11 @@
 
 set -euo pipefail
 
+# 日志函数必须在参数解析之前定义：解析失败时要用 err 报错，
+# 而它原来在解析之后——`--port` 漏写取值会先撞上 "err: command not found"。
+log() { echo -e "\033[1;32m[chicken]\033[0m $*"; }
+err() { echo -e "\033[1;31m[chicken]\033[0m $*" >&2; }
+
 # ---- 参数解析 ----
 HUB_PORT=""
 DOMAIN=""
@@ -31,10 +36,20 @@ DO_SYSTEMD=1
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --hub-port) HUB_PORT="$2"; shift 2;;
-    --domain)   DOMAIN="$2"; shift 2;;
-    --port)     PORT="$2"; shift 2;;
-    --install-dir) INSTALL_DIR="$2"; shift 2;;
+    # 带值参数先校验 $2 存在。脚本开了 set -u，`--port` 后面不跟值会让
+    # `$2` 变成未绑定变量并当场退出，报的是 "line 35: $2: unbound variable"
+    # 这种看不懂的错；而且 `--help` 说明里写着"值可选"，用户自然就会漏写。
+    --hub-port|--domain|--port|--install-dir)
+      if [[ $# -lt 2 || "$2" == --* ]]; then
+        err "$1 缺少取值（用 --help 看用法）"; exit 1
+      fi
+      case "$1" in
+        --hub-port)    HUB_PORT="$2";;
+        --domain)      DOMAIN="$2";;
+        --port)        PORT="$2";;
+        --install-dir) INSTALL_DIR="$2";;
+      esac
+      shift 2;;
     --no-theme) DO_THEME=0; shift;;
     --no-proxy) DO_PROXY=0; shift;;
     --no-systemd) DO_SYSTEMD=0; shift;;
@@ -43,14 +58,33 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-log() { echo -e "\033[1;32m[chicken]\033[0m $*"; }
-err() { echo -e "\033[1;31m[chicken]\033[0m $*" >&2; }
+# 端口必须是数字：后面要拼进 URL 与 systemd 配置。
+# 不校验时 `--port abc` 会一路走到 healthz 探测才失败，报错信息跟真正的原因无关。
+for pair in "hub-port:$HUB_PORT" "port:$PORT"; do
+  name="${pair%%:*}"; val="${pair#*:}"
+  [[ -z "$val" ]] && continue
+  if ! [[ "$val" =~ ^[0-9]+$ ]] || (( val < 1 || val > 65535 )); then
+    echo "端口不合法: --$name $val（应为 1-65535 的整数）" >&2; exit 1
+  fi
+done
 
 # ---- 0. 前置检查 ----
 command -v node >/dev/null || { err "需要 Node.js 18+（含 npm）。"; exit 1; }
 command -v npm  >/dev/null || { err "需要 npm。"; exit 1; }
 NODE_MAJOR=$(node -p 'process.versions.node.split(".")[0]')
 if [[ "$NODE_MAJOR" -lt 18 ]]; then err "Node.js 版本太低（$NODE_MAJOR），需要 18+。"; exit 1; fi
+
+# systemd 不吃 PATH，ExecStart 必须写绝对路径。
+# 原来硬写 /usr/bin/node：nvm、fnm、以及官方 tar 包安装的 node 都不在那个位置，
+# 生成的服务单元会在第一次启动时才失败，而报错是 systemd 的
+# "status=203/EXEC"，跟"node 装在哪"看不出关系。
+NODE_BIN=$(command -v node)
+if [[ "$NODE_BIN" != /* ]]; then
+  err "定位不到 node 的绝对路径（拿到的是 $NODE_BIN），无法写 systemd 单元。"
+  exit 1
+fi
+NODE_DIR=$(dirname "$NODE_BIN")
+log "node = $NODE_BIN (v$NODE_MAJOR)"
 
 # ---- 1. 定位/克隆仓库 ----
 if [[ -d "$INSTALL_DIR/.git" ]]; then
@@ -92,14 +126,18 @@ if [[ ! -f server/config.json ]]; then
   sed -e "s|http://127.0.0.1:9911|http://127.0.0.1:$HUB_PORT|" \
       -e "s/\"port\": 7789/\"port\": $PORT/" \
       server/config.example.json > server/config.json
-  # 默认清空 websites（example 里的 example.com 是占位，别真去探测）
-  python3 - "$INSTALL_DIR/server/config.json" <<'PY' 2>/dev/null || true
-import json,sys
-p=sys.argv[1]
-d=json.load(open(p))
-d['websites']=[]
-json.dump(d,open(p,'w'),ensure_ascii=False,indent=2)
-PY
+  # 默认清空 websites（example 里的 example.com 是占位，别真去探测）。
+  # 用 node 而不是 python3：本脚本第 0 步已经确认 node 存在，python3 却是个
+  # 没写在帮助里、也没在检查里出现的隐形依赖——精简镜像上它往往不在，
+  # 于是 `|| true` 把失败吞掉，留下一个带 example.com 的配置去真探测。
+  # 顺手修好缩进（2 空格），免得 sed 生成的 JSON 与这里重写出来的风格不一致。
+  "$NODE_BIN" -e '
+    const fs = require("fs");
+    const p = process.argv[1];
+    const d = JSON.parse(fs.readFileSync(p, "utf8"));
+    d.websites = [];
+    fs.writeFileSync(p, JSON.stringify(d, null, 2) + "\n");
+  ' "$INSTALL_DIR/server/config.json" || { err "改写 config.json 失败，请手动把 websites 清空。"; exit 1; }
   log "已生成。可编辑 server/config.json 加「网站鸡」（websites），或留空。"
 else
   log "server/config.json 已存在，保留。"
@@ -125,7 +163,10 @@ After=network.target
 
 [Service]
 WorkingDirectory=$INSTALL_DIR
-ExecStart=/usr/bin/node server/index.js --config server/config.json
+ExecStart=$NODE_BIN server/index.js --config server/config.json
+# 显式给 PATH：服务下可能需要 node 同目录里的可执行文件，
+# 而 systemd 的默认 PATH 不含 /usr/local/bin 之类。
+Environment=PATH=$NODE_DIR:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Restart=always
 RestartSec=3
 User=$SVC_USER

@@ -4,7 +4,7 @@
 // 「时间序列折线 + 悬停读数」这一类图；手写一层两百行的 SVG 比拉一个几百 KB 的
 // 图表库更划算，也不会带来第二套主题变量。数学部分在 shared/chart.js（可单测）。
 
-import { niceTicks, timeTicks, project, clockLabel } from '/shared/chart.js';
+import { niceTicks, timeTicks, project, clockLabel, toMillis } from '/shared/chart.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const el = (name, attrs = {}) => {
@@ -119,7 +119,7 @@ export function renderChart(host, cfg) {
     readout.replaceChildren();
     const head = document.createElement('div');
     head.className = 'ro-time';
-    head.textContent = new Date(row.ts).toLocaleString('zh-CN', { hour12: false });
+    head.textContent = new Date(toMillis(row.ts)).toLocaleString('zh-CN', { hour12: false });
     readout.append(head);
     for (const s of series) {
       const v = row[s.key];

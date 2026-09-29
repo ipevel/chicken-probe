@@ -56,6 +56,11 @@ export const ST = {
   ALERT: 'alert',   // 指标超阈：膨起来发抖
 };
 
+// 合法状态值的集合，供入口做白名单校验。
+// 放在 ST 旁边而不是各调用点自己列：状态是双端共用的协议，加一个状态时
+// 这份集合必须跟着走，摆在一起才不会漏。
+export const ST_VALUES = new Set(Object.values(ST));
+
 // 小山坡：高斯包络。服务端与客户端共用同一个高度场，否则鸡会浮在半空或陷进土里
 export const HILL = { x: 14, z: 13, h: 2.4, sigma2: 30 };
 
