@@ -1,0 +1,110 @@
+name: release
+
+# 主题 A 此前只有 CI、没有发布：v0.2.0 打了 tag，但 Release 里没有任何安装包，
+# 于是 hub 面板「主题 → 上传」拿不到东西——只能自己从源码 build。
+# 这个 workflow 让「打 tag」就等于「出可安装的包」，和主题 B 保持一致。
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+# 默认最小权限；需要写权限的 job 自己声明。
+permissions:
+  contents: read
+
+jobs:
+  # 校验与发布分成两个 job：校验完全不需要写权限，而发布需要。
+  # 合成一个 job 会让那个能推送的令牌出现在 npm ci / 测试 / 构建的环境里。
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      # 按完整 commit SHA 固定，不用浮动 tag：tag 是可被上游改写的引用。
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --omit=dev
+
+      # 发布是唯一一次「东西交出去就收不回」的动作，测试必须在这里也跑一遍。
+      - run: npm test
+
+      # package.json 与 theme.json 会各走各的，而 hub 面板读的是后者；
+      # 对不上就让发布停下，别发出一个版本号自相矛盾的包。
+      # 注意路径：本仓库的清单在 theme/theme.json，不在仓库根。
+      - name: theme.json 与 package.json 版本必须一致
+        run: |
+          a="$(node -p "require('./package.json').version")"
+          b="$(node -p "require('./theme/theme.json').version")"
+          if [ "$a" != "$b" ]; then
+            echo "package.json ($a) 与 theme/theme.json ($b) 版本不一致" >&2
+            exit 1
+          fi
+          echo "版本一致：$a"
+
+      - name: tag 必须与 theme.json 版本一致
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          declared="$(node -p "require('./theme/theme.json').version")"
+          if [ "$tag" != "$declared" ]; then
+            echo "tag $GITHUB_REF_NAME 与 theme/theme.json 的 $declared 对不上" >&2
+            exit 1
+          fi
+
+      # 用 build:theme 而不是 build:dist：前者出 theme.tar.gz，
+      # 后者等于 --no-tar、只组 dist 不打包（CI 里踩过这个坑）。
+      # 打包时 build-theme.mjs 自带体积与必需文件校验，不合规会直接 exit 1。
+      - name: 打包
+        run: npm run build:theme
+
+      # 再分发 three.js 必须随附其 MIT 许可全文，这是硬条件：
+      # 文件不在包里就不该发出去。
+      - name: 确认声明文件在包内
+        run: |
+          tar tzf build/theme.tar.gz | grep -q 'THIRD_PARTY_NOTICES.md' \
+            || { echo "theme.tar.gz 里没有 THIRD_PARTY_NOTICES.md" >&2; exit 1; }
+          echo "声明文件已在包内"
+
+      - name: 生成校验和
+        run: |
+          cd build
+          sha256sum theme.tar.gz | cut -d' ' -f1 > theme.tar.gz.sha256
+          cat theme.tar.gz.sha256
+
+      - uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b # v4.5.0
+        with:
+          name: theme-package
+          path: |
+            build/theme.tar.gz
+            build/theme.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: verify
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    # 唯一需要写权限的 job，就只在这里授予。
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: theme-package
+
+      # 重跑同一个 tag 时若有 Release 就地覆盖，符合「重新发布」的意图。
+      - name: 发布
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" theme.tar.gz theme.tar.gz.sha256 \
+              --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$GITHUB_REF_NAME" theme.tar.gz theme.tar.gz.sha256 \
+              --generate-notes --repo "$GITHUB_REPOSITORY"
+          fi
