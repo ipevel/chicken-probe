@@ -37,6 +37,11 @@
     <span id="conn" class="conn" title="数据连接状态">连接中</span>
     <div class="top-actions">
       <button id="farm-btn" class="ghost" type="button" title="走进 3D 鸡场，节点即鸡">🐔 进鸡场</button>
+      <!-- 用 <a target="_blank"> 而不是 button + window.open：中键/⌘点击、
+           右键「在新标签页打开」这些浏览器原生行为只有真链接才有，
+           而且 target="_blank" 会自动带上 rel="noopener" 的同源隔离效果。 -->
+      <a id="admin-btn" class="ghost" href="/admin" target="_blank" rel="noopener noreferrer"
+         title="打开探针主控的管理后台（新标签页）">⚙ 管理</a>
       <button id="theme-btn" class="ghost icon" type="button" title="亮/暗切换">◐</button>
     </div>
   </header>
