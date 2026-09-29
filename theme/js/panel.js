@@ -11,11 +11,30 @@ import {
   monthUsage, expiringIn, staleFor, nowSec, formatBytesShort,
 } from '/shared/derive.js';
 import { flagEl, mountFlagSprite } from './flag.js';
-import { nodeHistory } from './history.js';
+import { nodeHistory, themeConfig, pick } from './history.js';
 import { renderChart, renderSpark } from './chart.js';
 import { stats as seriesStats, alignByTs } from '/shared/chart.js';
 
 const $ = (id) => document.getElementById(id);
+
+// ---- 本主题在面板里的设置 ----
+//
+// 字段声明要和 theme/theme.json 的 config 块一致：hub 把面板保存的值原样存下、
+// 不做校验，所以类型与默认值只能由这里提供。
+const THEME_SHORT = 'chicken-farm';
+const FIELDS = {
+  showPeaks: { key: 'show_peaks', type: 'boolean', default: true },
+  showFarm: { key: 'show_farm', type: 'boolean', default: true },
+};
+
+/** 读本主题在面板里保存的设置。旧 hub / 匿名访客都返回 {}，默认值由 pick 补。 */
+export async function loadSettings() {
+  const cfg = await themeConfig(THEME_SHORT);
+  return {
+    showPeaks: pick(cfg, FIELDS.showPeaks),
+    showFarm: pick(cfg, FIELDS.showFarm),
+  };
+}
 
 // ---- 分段计量条的统一规则 ----
 //
@@ -51,7 +70,7 @@ function el(tag, cls, text) {
   return n;
 }
 
-export function createPanel({ onEnterFarm } = {}) {
+export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
   const gridEl = $('grid');
   const summaryEl = $('summary');
   const chipsEl = $('chips');
@@ -65,6 +84,23 @@ export function createPanel({ onEnterFarm } = {}) {
   const sparks = new Map();         // id -> 卡片上那条 1 小时 CPU 曲线的数据
   const sparkQueue = [];            // 待抓的卡片曲线（限流，别一屏几十个请求）
   let sparkBusy = 0;
+  /*
+   * 面板为本主题保存的设置。默认值由 pick 按声明补上，所以在 main.js 读设置
+   * 失败、或 hub 根本没有这个接口时，「全开」是兜底：最坏是多出一个鸡场按钮，
+   * 而不是让用户以为功能被删了。
+   */
+  /*
+   * 读设置放在 createPanel 外面由 main.js 等一次：把 createPanel 变成 async
+   * 会让整个模块的初始化变成微任务，而 main.js 里紧跟其后的 hub.start() 与
+   * body.ready 都在同一个同步流程上。
+   *
+   * 默认值仍在这里补一次，于是「读设置失败」与「hub 没这个接口」都自然回落到
+   * 声明的默认值，调用方不需要为这两种情况写额外分支。
+   */
+  const settings = {
+    showPeaks: pick(settingsIn, FIELDS.showPeaks),
+    showFarm: pick(settingsIn, FIELDS.showFarm),
+  };
 
   // ---- URL 状态：筛完能直接分享，刷新也不丢 ----
   function readUrl() {
@@ -508,6 +544,10 @@ export function createPanel({ onEnterFarm } = {}) {
       cpu: m.cpu ?? null,
       net_rx: m.net_rx ?? null,
       net_tx: m.net_tx ?? null,
+      // 实时推送是一个瞬时值而不是一分钟的样本，它自己就是这一点的峰值。
+      // 公开节点接口只给瞬时值，正好与卡片上显示的一致。
+      net_rx_max: m.net_rx ?? null,
+      net_tx_max: m.net_tx ?? null,
       mem: m.mem_used != null && memTotal ? (m.mem_used / memTotal) * 100 : null,
       disk: m.disk_used != null && diskTotal ? (m.disk_used / diskTotal) * 100 : null,
     };
@@ -586,10 +626,23 @@ export function createPanel({ onEnterFarm } = {}) {
     for (const c of RES_CHARTS) {
       const block = el('div', 'chart-block');
       const host = el('div', 'chart-host');
+      /*
+       * 网速图在均值之外再画一条峰值线：hub v1.3.1 起每分钟另存这一分钟里的
+       * 最高网速，否则一次十几秒的测速会被摊到整分钟里，在 7 天窗口里看不见。
+       *
+       * 只有当这批数据真的带峰值时才加（旧 hub 没有这两个字段），否则会多出
+       * 两条空序列：Y 轴被抬高、图例多两行，什么也没画出来。
+       */
+      const hasPeak = c.net && settings.showPeaks
+        && withLiveRows.some(r => r.net_rx_max != null || r.net_tx_max != null);
       const series = c.net
         ? [
           { key: 'net_tx', label: '上行', color: 'var(--c-up)', format: (v) => formatSpeed(v) },
           { key: 'net_rx', label: '下行', color: 'var(--c-down)', format: (v) => formatSpeed(v) },
+          ...(hasPeak ? [
+            { key: 'net_tx_max', label: '上行峰值', color: 'var(--c-up)', format: (v) => formatSpeed(v), dash: true },
+            { key: 'net_rx_max', label: '下行峰值', color: 'var(--c-down)', format: (v) => formatSpeed(v), dash: true },
+          ] : []),
         ]
         : [{ key: c.key, label: c.label, color: c.color, format: c.format }];
       block.append(el('h3', null, `${c.label}（${detail.hours} 小时${detail.windowNote || ''}）`), host,
@@ -809,6 +862,11 @@ export function createPanel({ onEnterFarm } = {}) {
     }
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDetail(); });
     $('farm-btn').onclick = () => onEnterFarm?.();
+    /*
+     * 设置项在 init 之前就已经读到（见下面的 loadConfig），这里只是按它决定
+     * 入口显不显示。关掉鸡场入口后面板就是纯监控，蛋仍留在机器上。
+     */
+    if (!settings.showFarm) $('farm-btn').hidden = true;
     const themeBtn = $('theme-btn');
     themeBtn.onclick = () => {
       const dark = document.documentElement.classList.toggle('dark');

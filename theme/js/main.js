@@ -3,7 +3,7 @@
 // 用 hash 路由而不是路径路由：hub 会把未知路径回落到 index.html，但 hash 切换
 // 不会重新加载页面，进/出鸡场时面板状态（筛选、滚动位置）原样留着。
 
-import { createPanel } from './panel.js';
+import { createPanel, loadSettings } from './panel.js';
 import { createHub } from './data.js';
 
 const $ = (id) => document.getElementById(id);
@@ -12,8 +12,15 @@ let farm = null;
 let mounting = false;
 let identity = loadIdentity();
 
+/*
+ * 设置必须在建面板之前读到：面板是按设置渲染的（鸡场入口显不显示、图表画不画
+ * 峰值线），建完再补就要重画一遍。读设置失败不会抛 —— 拿不到就是全部用默认值。
+ */
+const settings = await loadSettings();
+
 const panel = createPanel({
   onEnterFarm: () => { location.hash = '#farm'; },
+  settings,
 });
 
 /** 玩家身份存本机：联机时随 hello 报给房间，断线重连回来还是同一只鸡。 */

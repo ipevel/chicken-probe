@@ -20,11 +20,59 @@ function keyOf(id, series, hours, points) { return `${id}|${series}|${hours}|${p
 async function fetchJson(path, signal) {
   const res = await fetch(path, { signal, headers: { accept: 'application/json' } });
   if (!res.ok) {
-    const e = new Error(res.status === 401 ? '公开页已关闭' : `HTTP ${res.status}`);
+    /*
+     * hub v1.3.1 起报错正文是一句写给人看的中文（如「主题包校验失败，请重新下载」），
+     * 且是 text/plain。旧 hub 给的是 unauthorized 这类原始英文短语，反代/CDN
+     * 给的是 HTML 页面 —— 这两种都不该显示给访客，所以只认含中文的短句。
+     */
+    const body = await res.text().catch(() => '');
+    const e = new Error(hubText(body) || (res.status === 401 ? '公开页已关闭' : `HTTP ${res.status}`));
     e.status = res.status;
     throw e;
   }
   return res.json();
+}
+
+const CJK = /[\u3000-\u303f\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]/;
+
+/** hub 自己那句中文错误；不是中文短句（英文原始错误、HTML 页面、空响应）时返回空串。 */
+export function hubText(raw) {
+  const t = typeof raw === 'string' ? raw.trim() : '';
+  if (!t || t.length > 200) return '';
+  if (t.includes('\n') || t.includes('\r') || t.includes('<')) return '';
+  return CJK.test(t) ? t : '';
+}
+
+/**
+ * 本主题在面板里保存的设置，来自 `GET /api/themes/{short}/config`（hub v1.3.0 起）。
+ *
+ * hub 原样存面板写进去的对象、不校验字段，所以取值一律经 `pick()` 按声明的类型
+ * 判断，而不是直接读。接口不存在（旧 hub 404）、匿名访客被拒（401）都当作
+ * 「没有任何保存的设置」，即全部用默认值 —— 不能为一个设置项让整个面板失败。
+ */
+export async function themeConfig(short, signal) {
+  try {
+    const res = await fetch(`/api/themes/${encodeURIComponent(short)}/config`, {
+      signal, headers: { accept: 'application/json' },
+    });
+    if (!res.ok) return {};
+    const raw = await res.json();
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * 取一个设置项。类型由声明决定而不是由存下来的值决定：
+ * `Boolean('false')` 是 true，字符串 "false" 绝不能被读成开启。
+ */
+export function pick(saved, field) {
+  const v = saved?.[field.key];
+  if (v === undefined || v === null) return field.default;
+  if (field.type === 'boolean') return typeof v === 'boolean' ? v : field.default;
+  if (field.type === 'number') return typeof v === 'number' && Number.isFinite(v) ? v : field.default;
+  return typeof v === 'string' ? v : field.default;
 }
 
 function num(v) { return typeof v === 'number' && Number.isFinite(v) ? v : null; }
@@ -60,7 +108,12 @@ async function load(id, series, hours, width) {
       const realHours = Number.isFinite(Number(data.hours)) ? Number(data.hours) : hours;
       const out = series === 'ping'
         ? { hours: realHours, ...shapePing(data) }
-        : { hours: realHours, rows: normalizeRows(data.metrics, ['cpu', 'mem_used', 'disk_used', 'net_rx', 'net_tx']) };
+        /*
+         * net_rx_max / net_tx_max 是 hub v1.3.1 起每行多出的「这一分钟里的最高
+         * 网速」，与 net_rx / net_tx（这一分钟的均值）并列。旧 hub 没有这两个
+         * 字段，normalizeRows 会把缺失值统一成 null，曲线自然不画峰值。
+         */
+        : { hours: realHours, rows: normalizeRows(data.metrics, ['cpu', 'mem_used', 'disk_used', 'net_rx', 'net_tx', 'net_rx_max', 'net_tx_max']) };
       cache.set(key, { t: Date.now(), data: out });
       return out;
     } finally {

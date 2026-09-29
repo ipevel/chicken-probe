@@ -87,7 +87,15 @@ export function renderChart(host, cfg) {
       d += `${prevIndex >= 0 && i === prevIndex + 1 ? 'L' : 'M'}${p.x.toFixed(1)},${p.y.toFixed(1)} `;
       prevIndex = i;
     }
-    const path = el('path', { class: 'line', d: d.trim(), stroke: s.color, fill: 'none' });
+    const path = el('path', {
+      class: s.dash ? 'line line-peak' : 'line',
+      d: d.trim(),
+      stroke: s.color,
+      fill: 'none',
+      // 峰值线用虚线并与均值线同色：它是上面那条线的属性（"这一分钟最高到过多少"），
+      // 不是第三条独立序列，不该抢均值的视觉重量。
+      ...(s.dash ? { 'stroke-dasharray': '4 3', 'stroke-opacity': '0.55', 'stroke-width': '1' } : {}),
+    });
     svg.append(path);
   }
 
