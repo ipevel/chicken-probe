@@ -9,12 +9,11 @@
 
 import { ST } from './physics.js';
 import { formatAge, formatBytesShort } from './derive.js';
-import { iconIdOf } from './icon-name.js';
 
 /**
  * @param {object} meta 服务端名册条目（或按实时姿态修正过的同形对象）
  *   { kind, name, country, state, tone, label, offline, ko, hp, maxHp, up, reason, latency, netIn, netOut, cpu, mem }
- * @returns {{title:string,sub:string,flag:string,iconId:string|null,hp:number,cpu:number|null,mem:number|null,offline:boolean,gauges:boolean}}
+ * @returns {{title:string,sub:string,flag:string,hp:number,cpu:number|null,mem:number|null,offline:boolean,gauges:boolean}}
  *   Chicken.setPlate 吃的数据（纯函数：没有 DOM、没有全局状态，两端可共用）
  */
 export function npcPlate(meta) {
@@ -41,11 +40,6 @@ export function npcPlate(meta) {
 
   return {
     title, sub, flag: meta.country,
-    // 名牌的图标位。只有数据里真的带图标时才给：NPC 的名册条目没有 icon 字段，
-    // 硬兜成一个鸡头只会让「探针鸡·东京」前面多画一只重复的鸡 ——
-    // 「这是哪只鸡」已经由鸡的模型本身（毛色/姿态）表达了。
-    // 字段先留着，以后有可选的个性化图标时不必回头改调用点。
-    iconId: meta.icon ? iconIdOf(meta.icon) : null,
     // 服务端广播的 hp/maxHp：探针鸡被啄之后血条要真的掉下去
     hp: meta.maxHp ? Math.max(0, Math.min(1, meta.hp / meta.maxHp)) : (meta.ko ? 0 : 1),
     cpu: meta.cpu, mem: meta.mem,

@@ -62,10 +62,6 @@
   --dur-1: .12s;  --dur-2: .18s;  --dur-3: .25s;
   --ease: cubic-bezier(.22, .61, .36, 1);
 
-  /* 图标尺度：.i 跟字号，.i-16/20/26 是固定三档；--icon-gap 是图标与文字的唯一间距 */
-  --ic-16: 16px;  --ic-20: 20px;  --ic-26: 26px;
-  --icon-gap: 6px;
-
   /* 浮动层阴影：--shadow 是卡片级，抽屉与浮层要更深一层 */
   --shadow-2: 0 2px 6px rgba(20, 22, 26, .08), 0 14px 40px rgba(20, 22, 26, .14);
 
@@ -162,7 +158,7 @@ body.in-farm { overflow: hidden; }
 
 #boot {
   position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
-  gap: var(--icon-gap);
+  gap: 6px;
   background: var(--bg); color: var(--ink-2); z-index: 50;
 }
 /* 首屏脚本一跑就把 boot 摘掉：它只是防白屏，不该挡住面板 */
@@ -184,22 +180,12 @@ button, select, input { font: inherit; color: inherit; }
   }
 }
 
-/* 图标：颜色永远来自 currentColor，尺寸要么跟字号（.i）要么取固定三档。
-   1em + vertical-align 那一档是给正文里的行内图标用的，不破坏行高。 */
-.i { width: 1em; height: 1em; flex: none; vertical-align: -0.125em; }
-.i-16 { width: var(--ic-16); height: var(--ic-16); }
-.i-20 { width: var(--ic-20); height: var(--ic-20); }
-.i-26 { width: var(--ic-26); height: var(--ic-26); }
-/* 一句话里并排放一组图标（事件流里「整只鸡 + 撞击爆点」那一对）时用它撑开间距，别靠空格拼 */
-.i-group { display: inline-flex; align-items: center; gap: 2px; vertical-align: -0.125em; }
-/* 图标后面那层文字：作为 flex item 会被块化，overflow + 省略号才生效 ——
-   直接写在 flex 容器上不生效（flex 容器不是块容器，text-overflow 无从作用）。 */
-.i-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 图标：颜色永远来自 currentColor。
 
 .ghost {
   background: var(--paper); border: 1px solid var(--line-control); color: var(--ink);
   border-radius: var(--r-sm); padding: 7px 12px; cursor: pointer;
-  display: inline-flex; align-items: center; gap: var(--icon-gap);
+  display: inline-flex; align-items: center; gap: 6px;
   transition: border-color var(--dur-1), background var(--dur-1);
 }
 .ghost:hover { border-color: var(--line-control-hover); background: var(--accent-soft); }
@@ -212,7 +198,7 @@ button, select, input { font: inherit; color: inherit; }
 
 .top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .top h1 {
-  display: inline-flex; align-items: center; gap: var(--icon-gap);
+  display: inline-flex; align-items: center; gap: 6px;
   font-size: 17px; margin: 0; font-weight: 600; letter-spacing: .2px;
 }
 .top-actions { margin-left: auto; display: flex; gap: 8px; }
@@ -505,7 +491,7 @@ body.in-farm { background: var(--farm-grass); }
   backdrop-filter: blur(4px);
 }
 /* 三行都是「图标 + 文字 + 数字」：用同一套间距，别靠空格拼对不齐 */
-.hud-stats span { display: inline-flex; align-items: center; gap: var(--icon-gap); }
+.hud-stats span { display: inline-flex; align-items: center; gap: 6px; }
 #online, #web-online, #visitors { color: var(--farm-accent); font-variant-numeric: tabular-nums; }
 
 /* 返回与联机状态：同一套深色卡片语言；按钮与徽标自己吃指针，卡面不吃 */
@@ -514,7 +500,7 @@ body.in-farm { background: var(--farm-grass); }
   background: var(--farm-haze); color: var(--farm-ink);
   border: 1px solid rgba(255, 255, 255, .18); border-radius: var(--r-md);
   padding: 6px 13px; font-size: 13px; font-weight: bold;
-  display: inline-flex; align-items: center; gap: var(--icon-gap);
+  display: inline-flex; align-items: center; gap: 6px;
   backdrop-filter: blur(4px); transition: background var(--dur-1);
 }
 /* 悬停直接用「深一档」的那一层，不再另造一个透明度 */
@@ -539,7 +525,6 @@ body.in-farm { background: var(--farm-grass); }
   backdrop-filter: blur(4px); pointer-events: auto; cursor: pointer;
 }
 #board h3 {
-  display: inline-flex; align-items: center; gap: var(--icon-gap);
   margin: 0 0 6px; font-size: 13px; color: var(--farm-accent);
 }
 #board.collapsed #board-rows { display: none; }
@@ -547,8 +532,8 @@ body.in-farm { background: var(--farm-grass); }
 #board-rows .row { display: flex; justify-content: space-between; gap: 16px; line-height: 1.7; }
 #board-rows .row.me { color: var(--farm-accent); }
 #board-rows .row.off { color: var(--farm-off); }
-/* 行首图标 + 名字，所以 .nm 变成 flex 容器（名字文字的省略号在 .i-label 上，见上面） */
-#board-rows .row .nm { display: flex; align-items: center; gap: var(--icon-gap); min-width: 0; overflow: hidden; }
+/* 行首原来是 emoji，现在回到纯文字 —— 省略号仍在元素自己身上 */
+#board-rows .row .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 原来是 opacity: .8 —— 等于把对比度交给背后的场景决定，改不动也量不准 */
 #board-rows .row .sc { font-variant-numeric: tabular-nums; color: var(--farm-ink-dim); }
 
@@ -571,10 +556,9 @@ body.in-farm { background: var(--farm-grass); }
   border-radius: var(--r-md); padding: 10px 14px; backdrop-filter: blur(4px); pointer-events: auto;
 }
 #me-line { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
-/* 名字行是「图标 + 名字」，名字的省略号同样在 .i-label 上 */
 #me-name {
-  display: flex; align-items: center; gap: var(--icon-gap);
   flex: 1; min-width: 0; font-size: 14px; font-weight: bold;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 #me-edit, #me-name-ok {
   background: none; border: none; color: var(--farm-ink); cursor: pointer;
@@ -602,7 +586,6 @@ body.in-farm { background: var(--farm-grass); }
 }
 #hpfill.low { background: linear-gradient(90deg, #e05252, #ff9a6b); }
 #score {
-  display: flex; align-items: center; gap: var(--icon-gap);
   font-size: 12px; color: var(--farm-score); margin-top: 6px;
 }
 
@@ -636,10 +619,10 @@ body.touch .hint { font-size: 12px; bottom: calc(6px + var(--sa-b)); }
 /* KO 横幅：只靠 .show 淡入淡出；不吃指针，也不占位。
    原来是白字 30px 直接压在场景上（叠天空 1.53:1），靠 text-shadow 兜底 ——
    而 text-shadow 不是对比度的合规手段。现在换成 --farm-haze-strong 药丸（6.43:1 起）。
-   要能装 #i-dizzy / #i-logo 所以改成 flex 容器；left:0/right:0 的定位保留，居中交给 flex。 */
+   字前带 emoji，居中交给 flex。 */
 #ko-banner {
   position: absolute; top: 38%; left: 0; right: 0; padding: 10px 22px;
-  display: flex; align-items: center; justify-content: center; gap: var(--icon-gap);
+  display: flex; align-items: center; justify-content: center; gap: 6px;
   background: var(--farm-haze-strong); border-radius: var(--r-md);
   text-align: center; color: var(--farm-ink); font-size: 28px; font-weight: bold;
   text-shadow: 0 2px 8px rgba(0, 0, 0, .6);
@@ -683,7 +666,7 @@ body.touch #touch-ui {
   width: min(19vw, 88px); height: min(19vw, 88px); min-width: 60px; min-height: 60px;
   border-radius: 50%; border: 2px solid rgba(255, 255, 255, .45);
   background: var(--farm-haze); backdrop-filter: blur(3px); font-size: 16px;
-  display: flex; align-items: center; justify-content: center; gap: var(--icon-gap);
+  display: flex; align-items: center; justify-content: center; gap: 6px;
   transition: transform .08s, background var(--dur-1);
 }
 .tc-btn:active { transform: scale(.92); background: rgba(255, 217, 94, .55); }
@@ -798,9 +781,4 @@ body.touch #touch-ui {
 @media (prefers-contrast: more) {
   :root { --ink-3: #4f545a; --line: #b9bdc3; --line-control: #7b8188; }
   html.dark { --ink-3: #b3b9c2; --line: #454b54; --line-control: #7d848d; }
-}
-/* 强制配色（Windows 高对比度）下让图标走系统色：currentColor 会被系统换掉，
-   这里只需要别自己去调整它 */
-@media (forced-colors: active) {
-  .i { forced-color-adjust: auto; }
 }

@@ -19,23 +19,11 @@ import { createFeathers } from './feathers.js';
 import { createTouchControls, isTouchDevice } from './touch.js';
 import { appearance } from '/shared/node-map.js';
 import { npcPlate } from '/shared/plate.js';
-import { iconIdOf } from '/shared/icon-name.js';
-import { iconEl } from './icons.js';
 
 const $ = (id) => document.getElementById(id);
 const STEP = 1 / 60;
 const PEER_TIMEOUT_MS = 2500;
 const FLASH_MS = 1600;
-
-/** 「图标 + 文字」这一行的拼装。文字单独一层 .i-label：flex 容器上的 text-overflow
- *  不生效，省略号必须挂在这层真正带 overflow 的元素上。
- *  文字来自别的玩家/服务端，一律用 textContent 塞进去，绝不拼 HTML。 */
-function iconLine(icon, text, size = 20) {
-  const span = document.createElement('span');
-  span.className = 'i-label';
-  span.textContent = text;
-  return [iconEl(icon, size), span];
-}
 
 // ---- 视角自适应（见 adaptiveFov / applyCameraBounds）----
 const BASE_FOV = 62;                      // 与 world.js 建相机时的初始 FOV 一致
@@ -184,7 +172,7 @@ export function createFarm({ identity, onChangeIdentity, onExit } = {}) {
     if (e.code === 'KeyM') {
       // toggle() 带副作用（切换静音状态），所以只调一次，别在布尔判断里再调一遍
       const muted = sfx.toggle();
-      flash(muted ? '已静音' : '声音开启', 900, muted ? 'sound-off' : 'sound-on');
+      flash(muted ? '🔇 已静音' : '🔊 声音开启', 900);
     }
     if (e.code === 'Escape' && !document.querySelector('.drawer:not(.closed)') && !locked) onExit?.();
     if (e.code === 'KeyE') peck();
@@ -217,15 +205,14 @@ export function createFarm({ identity, onChangeIdentity, onExit } = {}) {
 
   // ---------------- HUD ----------------
   function renderMe() {
-    // replaceChildren 而不是 textContent：名字行里还有图标，textContent 会把它一起删掉
-    $('me-name').replaceChildren(...iconLine(identityRef.icon, identityRef.name, 20));
+    $('me-name').textContent = `${identityRef.icon} ${identityRef.name}`;
     const fill = $('hpfill');
     fill.style.width = `${Math.max(0, (hp / CONF.maxHp) * 100)}%`;
     fill.classList.toggle('low', hp <= 30);
     const left = ko ? Math.max(0, CONF.koTime - (performance.now() - koStartT) / 1000) : 0;
-    $('score').replaceChildren(...(left > 0
-      ? iconLine('dizzy', `被啄晕了，${Math.ceil(left)} 秒后满血复活…`, 20)
-      : iconLine('trophy', `啄倒 ${score} 只鸡`, 20)));
+    $('score').textContent = left > 0
+      ? `😵 被啄晕了，${Math.ceil(left)} 秒后满血复活…`
+      : `🏆 啄倒 ${score} 只鸡`;
   }
 
   function renderTop() {
@@ -242,9 +229,8 @@ export function createFarm({ identity, onChangeIdentity, onExit } = {}) {
       const row = document.createElement('div');
       row.className = 'row' + (r.me ? ' me' : '') + (r.off ? ' off' : '');
       const name = document.createElement('span');
-      name.className = 'nm';
       // 名字来自别的玩家，一律 textContent —— 绝不拼 HTML
-      name.replaceChildren(...iconLine(r.icon, `${r.name}${r.me ? '（你）' : ''}`, 20));
+      name.textContent = `${r.icon || '🐔'} ${r.name}${r.me ? '（你）' : ''}`;
       const sc = document.createElement('b');
       sc.textContent = String(r.score);
       row.append(name, sc);
@@ -255,22 +241,19 @@ export function createFarm({ identity, onChangeIdentity, onExit } = {}) {
   let flashTimer = null, deadUntil = 0;
   /**
    * 屏幕中段的一行大字（静音提示、断线重连、KO…）。
-   * icon 是可选图标名，传了画在文字前面。
-   * ⚠ 这里必须用 replaceChildren 而不是 textContent —— 后者会把已成图标的子节点
-   * 一起删掉，而且不报错（「图标时有时无」就是它）。
    */
-  function flash(text, ms = FLASH_MS, icon) {
+  function flash(text, ms = FLASH_MS) {
     const el = $('ko-banner');
     // 倒地提示优先接管：它比「已静音」这类瞬时报重要
     if (performance.now() < deadUntil && ms < 2000) return;
-    el.replaceChildren(...(icon ? [iconEl(icon, 28), document.createTextNode(text)] : [document.createTextNode(text)]));
+    el.textContent = text;
     el.classList.add('show');
     clearTimeout(flashTimer);
     flashTimer = setTimeout(() => el.classList.remove('show'), ms);
   }
-  function flashDead(text, ms, icon) {
+  function flashDead(text, ms) {
     deadUntil = performance.now() + ms;
-    flash(text, ms, icon);
+    flash(text, ms);
   }
 
   /** 命中飘字：给「打中了」一个明确反馈，位置贴在屏幕中心偏上，不做 3D 投影。 */
@@ -289,27 +272,16 @@ export function createFarm({ identity, onChangeIdentity, onExit } = {}) {
   }
 
   /**
-   * 事件流里的一条。parts 里：字符串按文字节点、字符串数组按「一组图标」展开 ——
-   * 图标会落在句子中间（「你 + 整只鸡 + 撞击爆点 + 啄倒了 X」），只有按位置拼才排得对；
-   * 同样用 replaceChildren，否则前面的图标会被后面的 textContent 抹掉。
+   * 事件流里的一条。
    */
-  function feed(...parts) {
+  function feed(text) {
     const box = $('feed');
     const item = document.createElement('div');
     item.className = 'feed-item';
-    item.replaceChildren(...parts.map(feedNode));
+    item.textContent = text;
     box.append(item);
     while (box.childElementCount > 4) box.firstElementChild.remove();
     setTimeout(() => item.remove(), 4500);
-  }
-  /** 字符串 = 文字；数组 = 一组图标（并排，间隙见样式表里的 .i-group） */
-  function feedNode(part) {
-    if (!Array.isArray(part)) return document.createTextNode(String(part));
-    if (part.length === 1) return iconEl(part[0], 20);
-    const wrap = document.createElement('span');
-    wrap.className = 'i-group';
-    wrap.replaceChildren(...part.map((n) => iconEl(n, 20)));
-    return wrap;
   }
 
   function renderRoomState(state, detail) {
@@ -317,8 +289,8 @@ export function createFarm({ identity, onChangeIdentity, onExit } = {}) {
     const label = { live: '联机', connecting: '连接中', reconnecting: '重连中', off: '未联机', idle: '未联机' }[state] || state;
     el.textContent = detail && state === 'reconnecting' ? `${label} · ${detail}` : label;
     el.className = `conn ${state}`;
-    if (state === 'reconnecting') flash('连接断开，正在重连…', 5000, 'link');
-    if (state === 'live' && hadDrop) { flash('欢迎回来，战绩已恢复！', 2200, 'logo'); hadDrop = false; }
+    if (state === 'reconnecting') flash('🔗 连接断开，正在重连…', 5000);
+    if (state === 'live' && hadDrop) { flash('🐔 欢迎回来，战绩已恢复！', 2200); hadDrop = false; }
     if (state === 'reconnecting') hadDrop = true;
   }
   let hadDrop = false;
@@ -361,10 +333,9 @@ export function createFarm({ identity, onChangeIdentity, onExit } = {}) {
     };
     $('board').onclick = () => {
       const collapsed = $('board').classList.toggle('collapsed');
-      // 只写文字那一层：#board-title 里还有图标，写它的 textContent 会把图标删掉
-      $('board-title-text').textContent = collapsed
-        ? '啄倒榜'
-        : '啄倒榜（高占用触发主动攻击 · 点击收起）';
+      $('board-title').textContent = collapsed
+        ? '🐔 啄倒榜'
+        : '🐔 啄倒榜（高占用触发主动攻击 · 点击收起）';
     };
   }
 
@@ -494,9 +465,7 @@ export function createFarm({ identity, onChangeIdentity, onExit } = {}) {
       const st = myState(moving);
       me.setTransform(body.x, body.y, body.z, yaw);
       me.setState(st, ko ? 'danger' : 'ok');
-      // 名牌标题只放名字，图标位改成传 iconId（画不画由 chicken.js 决定）——
-      // canvas 里的 emoji 走系统字体，各端画法不同，还占掉名字的宽度
-      me.setPlate({ title: identityRef.name, iconId: iconIdOf(identityRef.icon), hp: hp / CONF.maxHp });
+      me.setPlate({ title: `${identityRef.icon} ${identityRef.name}`, hp: hp / CONF.maxHp });
       me.update(dt, st === ST.WALK || st === ST.RUN);
     }
 
@@ -508,7 +477,7 @@ export function createFarm({ identity, onChangeIdentity, onExit } = {}) {
       const p = ensurePeer(id, net?.roster.get(id));
       p.chicken.setTransform(s.x, s.y ?? 0, s.z, s.yaw);
       p.chicken.setState(s.st || ST.IDLE, s.st === ST.DEAD ? 'danger' : 'ok');
-      p.chicken.setPlate({ title: p.name || '访客', iconId: iconIdOf(p.icon), hp: (s.hp ?? 100) / CONF.maxHp });
+      p.chicken.setPlate({ title: `${p.icon || '🐔'} ${p.name || '访客'}`, hp: (s.hp ?? 100) / CONF.maxHp });
       p.chicken.update(dt, s.st === ST.WALK || s.st === ST.RUN);
     }
     dropGonePeers(now);
@@ -649,7 +618,7 @@ export function createFarm({ identity, onChangeIdentity, onExit } = {}) {
           sfx.hit();
           kick(m.knocked ? 0.22 : 0.12);
           popDamage(target, CONF.peckDamage);
-          if (m.knocked) feed(['hit'], ` 你把「${m.toName}」啄倒了`);
+          if (m.knocked) feed(`💥 你把「${m.toName}」啄倒了`);
         }
         break;
       }
@@ -658,13 +627,13 @@ export function createFarm({ identity, onChangeIdentity, onExit } = {}) {
           ko = true;
           koStartT = performance.now();
           sfx.ko();
-          flashDead('你被啄晕了！', CONF.koTime * 1000, 'dizzy');
+          flashDead('😵 你被啄晕了！', CONF.koTime * 1000);
           renderMe();
         } else if (m.f === myId) {
-          flash(`你啄倒了 ${m.toName}`, FLASH_MS, 'hit');
-          feed('你 ', ['chicken', 'hit'], ` 啄倒了 ${m.toName}`);
+          flash(`你啄倒了 ${m.toName}`);
+          feed(`你 🐔💥 啄倒了 ${m.toName}`);
         } else {
-          feed(`${m.fName} `, ['chicken', 'hit'], ` 啄倒了 ${m.toName}`);
+          feed(`${m.fName} 🐔💥 啄倒了 ${m.toName}`);
         }
         break;
       case 'respawn':
@@ -672,7 +641,7 @@ export function createFarm({ identity, onChangeIdentity, onExit } = {}) {
         body.x = m.x; body.z = m.z; body.y = groundHeight(m.x, m.z); body.vy = 0;
         body.kx = 0; body.kz = 0;
         sfx.respawn();
-        flash('站了起来', 1200, 'logo');
+        flash('🐔 站了起来', 1200);
         renderMe();
         break;
       case 'respawned':

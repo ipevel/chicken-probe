@@ -11,7 +11,6 @@ import {
   monthUsage, expiringIn, staleFor, nowSec, formatBytesShort,
 } from '/shared/derive.js';
 import { flagEl, mountFlagSprite } from './flag.js';
-import { iconEl } from './icons.js';
 import { nodeHistory, themeConfig, pick } from './history.js';
 import { renderChart, renderSpark } from './chart.js';
 import { stats as seriesStats, alignByTs } from '/shared/chart.js';
@@ -703,11 +702,8 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
     flag.append(flagEl(node.country));
     const h2 = el('h2', null, node.name);
     const pill = el('span', `pill ${statusOf(node, now)}`, STATUS_LABEL[statusOf(node, now)]);
-    // 图标是按钮唯一内容：图形自己 aria-hidden，名称给按钮 ——
-    // 换成 SVG 之后若不同时补 aria-label，按钮会变成完全无名称，比原来的字符名更糟。
-    const reload = el('button', 'ghost icon');
+    const reload = el('button', 'ghost icon', '⟳');
     reload.type = 'button';
-    reload.append(iconEl('refresh', 20));
     reload.title = '重新读取历史';
     reload.setAttribute('aria-label', '重新读取历史');
     reload.disabled = detail.loading;
@@ -718,9 +714,8 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
       detail.loadedKey = '';
       void renderDrawer();
     };
-    const close = el('button', 'ghost icon');
+    const close = el('button', 'ghost icon', '✕');
     close.type = 'button';
-    close.append(iconEl('close', 20));
     close.title = '关闭';
     close.setAttribute('aria-label', '关闭详情');
     close.onclick = closeDetail;

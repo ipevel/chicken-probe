@@ -7,7 +7,6 @@
 
 import * as THREE from 'three';
 import { ST, CONF } from '/shared/physics.js';
-import { drawIcon } from './icons.js';
 
 // 喙/脚是固定的橙、冠/肉垂是固定的红：这是参考站的规矩（同一只鸡在任何配色下
 // 都要一眼认得出来是鸡），所以它们不参与 PALETTES 的毛色推导，也别顺手让它们跟着变。
@@ -276,8 +275,8 @@ export class Chicken {
   }
 
   /**
-   * 名牌内容。data: {title, sub, flag, iconId, hp, cpu, mem, offline, gauges}
-   * iconId 是已经折好的符号 id（'i-chicken' / 空），见 shared/icon-name.js。
+   * 名牌内容。data: {title, sub, flag, hp, cpu, mem, offline, gauges}
+   * 名字里已经带 emoji（由调用方拼进 title），画布直接 fillText 画出去。
    * 只有内容真的变了才重画 canvas：重画 = 一次光栅化 + 一次纹理上传，
    * 每帧重画在手机上直接掉帧，而探针指标千分位抖动本来就不值得反映到牌子上。
    */
@@ -285,9 +284,6 @@ export class Chicken {
     const title = String(data.title ?? '');
     const sub = data.sub ? String(data.sub) : '';
     const flag = /^[a-zA-Z]{2}$/.test(String(data.flag || '')) ? String(data.flag) : '';
-    // 图标位：canvas 里画不了 emoji（各端字号字形都不同），所以标题只放名字，
-    // 图标名单独走这条字段。空字符串 = 不画。
-    const iconId = data.iconId ? String(data.iconId) : '';
     const hp = Number.isFinite(data.hp) ? clamp01(data.hp) : null;
     const cpu = Number.isFinite(data.cpu) ? clamp01(data.cpu) : null;
     const mem = Number.isFinite(data.mem) ? clamp01(data.mem) : null;
@@ -295,7 +291,7 @@ export class Chicken {
     const offline = !!data.offline;
 
     const sig = [
-      this.kind, offline ? 1 : 0, title, sub, flag, iconId, gauges ? 1 : 0,
+      this.kind, offline ? 1 : 0, title, sub, flag, gauges ? 1 : 0,
       hp == null ? '-' : hp.toFixed(2),
       cpu == null ? '-' : cpu.toFixed(2),
       mem == null ? '-' : mem.toFixed(2),
@@ -303,7 +299,7 @@ export class Chicken {
     if (sig === this.plateSig) return;
     this.plateSig = sig;
     this.offline = offline;
-    this.drawPlate({ title, sub, flag, iconId, hp, cpu, mem, gauges, offline });
+    this.drawPlate({ title, sub, flag, hp, cpu, mem, gauges, offline });
   }
 
   /** 受击红闪：给躯干加自发光再自己衰减，比叠一层贴图便宜，也不影响别的鸡。 */
@@ -328,7 +324,7 @@ export class Chicken {
    * 所以它该用 HUD 的暗底那一套，而不是面板的浅底那一套 —— 同一指标两组颜色不是错，
    * 错的是两边取同一个 hex；正确的是语义 token 相同、由底色决定具体色值。
    */
-  drawPlate({ title, sub, flag, iconId, hp, cpu, mem, gauges, offline }) {
+  drawPlate({ title, sub, flag, hp, cpu, mem, gauges, offline }) {
     const L = offline ? PLATE_OFFLINE : PLATES[this.kind] || PLATES.player;
     if (!this.ensurePlate(L.w, L.h, L.sx, L.sy, L.y)) return;
     const ctx = this.plateCtx;
@@ -348,14 +344,6 @@ export class Chicken {
     if (flag) {
       drawFlag(ctx, flag, 14, 12, L.flagW, L.flagH);
       x0 = 14 + L.flagW + 8;
-    }
-    // 图标位（可选）：与 DOM 侧同一份几何 —— drawIcon 直接复用 sprite 里 symbol 的 d，
-    // 所以名牌上的图形和面板上的图标逐点一致。18px 是设计给的下限
-    // （1.75 描边在更小的尺寸会糊），名字留白由下面的 x0 自动让出来。
-    if (iconId) {
-      const s = 18;
-      // 颜色对应 --farm-ink；+6 与样式表里的 --icon-gap 同值
-      if (drawIcon(ctx, iconId, x0, L.titleY - s + 4, s, '#ffffff')) x0 += s + 6;
     }
 
     // 名字留白的阈值：探针卡右侧要放两个圆环，网站卡窄，所以三套宽度各不相同
