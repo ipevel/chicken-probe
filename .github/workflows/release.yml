@@ -44,6 +44,24 @@ jobs:
           node-version: '22'
           cache: npm
 
+      # A release is only ever something that already shipped on main. Tagging a
+      # branch would publish a build nobody reviewed through the normal path, and
+      # nothing downstream would notice: the version gate is happy (the tag matches
+      # theme.json either way) and the panel happily offers it to every user.
+      - name: tag 必须在 main 上
+        if: github.ref_type == 'tag'
+        run: |
+          set -e
+          if ! git rev-parse --verify -q origin/main >/dev/null; then
+            echo "::error::拿不到 origin/main，无法核对 tag 是否在主干上（fail closed）"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_REF_NAME" origin/main; then
+            echo "::error::$GITHUB_REF_NAME 不是 origin/main 的祖先，发布的是没进主干的提交"
+            exit 1
+          fi
+          echo "::notice::$GITHUB_REF_NAME 位于 origin/main 上"
+
       # The gate is the referee, so verify the referee first: it once reported
       # "audit passed" while scanning nothing at all, because a JSON parser was
       # handed .gradle.kts text and the exception was swallowed.
@@ -153,14 +171,26 @@ jobs:
           name: theme-package
 
       # 重跑同一个 tag 时若有 Release 就地覆盖，符合「重新发布」的意图。
+      #
+      # 预发布必须标记出来。触发条件是任意 v* tag，v0.6.0-rc.1 否则会作为
+      # **正式版**发出去，而面板只要发现最新 release 的 tag 和已装版本不同就
+      # 重新下载，等于把 RC 推给所有用户。GitHub 不把预发布算进 latest release，
+      # 这正是 SemVer 要的语义：预发布是「可取用」，不是「推给用户」。
       - name: 发布
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -e
+          VER="${GITHUB_REF_NAME#v}"
+          PRERELEASE=()
+          case "$VER" in
+            *-*) PRERELEASE=(--prerelease); echo "::notice::$VER 是预发布，标记为 prerelease" ;;
+            *)   echo "::notice::$VER 是正式版本" ;;
+          esac
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" theme.tar.gz theme.tar.gz.sha256 \
               --clobber --repo "$GITHUB_REPOSITORY"
           else
             gh release create "$GITHUB_REF_NAME" theme.tar.gz theme.tar.gz.sha256 \
-              --generate-notes --repo "$GITHUB_REPOSITORY"
+              "${PRERELEASE[@]}" --generate-notes --repo "$GITHUB_REPOSITORY"
           fi
