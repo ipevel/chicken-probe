@@ -8,6 +8,18 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      gateMode:
+        description: |
+          SemVer 版本门禁模式。strict=不一致即中止（默认）；warn=只告警；off=跳过。
+          门禁内容：版本声明点不漂移、版本号合法、tag 与版本号一致、版本号严格递增、
+          版本号被写进代码却从未打 tag。规则见 VERSIONING.md。
+        type: choice
+        options:
+          - strict
+          - warn
+          - off
+        default: strict
 
 # 默认最小权限；需要写权限的 job 自己声明。
 permissions:
@@ -23,10 +35,48 @@ jobs:
     steps:
       # 按完整 commit SHA 固定，不用浮动 tag：tag 是可被上游改写的引用。
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # The SemVer gate compares this release against the previous one, so it
+          # needs the tag history and the commits in between, not just the tip.
+          fetch-depth: 0
       - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
           node-version: '22'
           cache: npm
+
+      # Fails in seconds rather than after npm ci + test + build. The two version
+      # steps further down only compare this release against its own manifest;
+      # this one also asks whether the version should have been higher.
+      - name: SemVer 版本门禁
+        if: inputs.gateMode != 'off'
+        env:
+          GATE_MODE: ${{ inputs.gateMode || 'strict' }}
+        run: |
+          set -e
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            TAG="$GITHUB_REF_NAME"
+          else
+            TAG="v$(node -p "require('./theme/theme.json').version")"
+            echo "非 tag 触发：按 theme/theme.json 声明的版本 $TAG 校验"
+          fi
+          # --zero-major-lenient：0.y.z 是初始开发期，提交类型与递增位不匹配
+          # 只提示不阻断。升到 1.0.0 后删掉这个开关，提交类型检查随即强制生效。
+          python3 tools/version_gate.py \
+            --tag "$TAG" \
+            --version-file package.json:version \
+            --version-file theme/theme.json:version \
+            --check-commits \
+            --zero-major-lenient \
+            --mode "$GATE_MODE"
+
+      # A version number written into the manifest but never tagged leaves a hole
+      # in the release sequence. This repo is still clean; keep it that way.
+      - name: SemVer 历史审计
+        if: (inputs.gateMode || 'strict') == 'strict'
+        run: |
+          set -e
+          python3 tools/version_gate.py --audit-history theme/theme.json:version
+
       - run: npm ci --omit=dev
 
       # 发布是唯一一次「东西交出去就收不回」的动作，测试必须在这里也跑一遍。
