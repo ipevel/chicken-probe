@@ -367,10 +367,17 @@ chicken-probe/
 │   └── hud-top-verdict.mjs 窄屏探针的判定纯函数（被探针与单测共用，可独立自证）
 ├── docs/             设计文档与视觉改造规格
 │   └── visual-refresh-20260929*.md   三份视觉改造规格（含可执行判据）
-└── test/             单测（node:test）
+├── test/             单测（node:test）
+└── VERSIONING.md     版本策略：什么算公共 API、递增位怎么定、CI 门禁拦什么
 ```
 
-## 九、许可与致谢
+## 九、版本号
+
+主题与联机服务会被**分开更新**（面板里的主题可能比服务器新，也可能旧），
+所以改联机协议、`statusOf` 判定、配置字段或部署路径都要计入版本号。
+递增位怎么定、tag 怎么打、CI 门禁拦什么，见 [VERSIONING.md](VERSIONING.md)。
+
+## 十、许可与致谢
 
 MIT License，见 [LICENSE](LICENSE)。
 
