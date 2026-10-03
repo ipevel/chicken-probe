@@ -44,6 +44,12 @@ jobs:
           node-version: '22'
           cache: npm
 
+      # The gate is the referee, so verify the referee first: it once reported
+      # "audit passed" while scanning nothing at all, because a JSON parser was
+      # handed .gradle.kts text and the exception was swallowed.
+      - name: 门禁自测
+        run: python3 tools/version_gate_test.py
+
       # Fails in seconds rather than after npm ci + test + build. The two version
       # steps further down only compare this release against its own manifest;
       # this one also asks whether the version should have been higher.
