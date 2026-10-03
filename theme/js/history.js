@@ -2,9 +2,12 @@
 //
 // 真 hub 的接口（monitor hub，匿名可读）：
 //   GET /api/nodes/{id}/metrics?hours=1|6|24|168&points=300..1500&series=metrics|ping
-//   metrics → { metrics: [{ts, cpu, mem_used, disk_used, net_rx, net_tx}], hours }
+//   metrics → { metrics: [{ts, cpu, cpu_max, minutes, mem_used, disk_used, net_rx, net_tx}],
+//               hours, step }
 //   ping    → { ping: [{task_id, ts, latency, band?, loss?}], probes: {id: 名称}, loss: {id: 比值}, hours }
 // 匿名访客的历史窗口会被主控夹到一个上限，所以响应里的 hours 可能小于请求值 —— 界面要显示实际窗口。
+// 主控保留多久（history_days）由 /api/me 给出，v1.3.2 起才有；没有就是老 hub，按 7 天算。
+// cpu_max / minutes / step 同样是 v1.3.2 起才有的字段，缺了各自退回原样（见 normalizeRows 与 load）。
 
 const CACHE_TTL_MS = 60_000;
 const cache = new Map();       // key -> { t, data }
@@ -112,8 +115,19 @@ async function load(id, series, hours, width) {
          * net_rx_max / net_tx_max 是 hub v1.3.1 起每行多出的「这一分钟里的最高
          * 网速」，与 net_rx / net_tx（这一分钟的均值）并列。旧 hub 没有这两个
          * 字段，normalizeRows 会把缺失值统一成 null，曲线自然不画峰值。
+         *
+         * cpu_max 与 minutes 是 v1.3.2 起跟着来的：前者是这一格里的 CPU 峰值
+         * （小时级汇总取的是各分钟峰值的最大值），后者是这一格实际折进了多少
+         * 分钟行。step 是整段响应共用的「每格覆盖多少秒」，用它减去 minutes
+         * 才能看出哪几格没被填满 —— 缺了就是老 hub，那份说明也就不显示。
          */
-        : { hours: realHours, rows: normalizeRows(data.metrics, ['cpu', 'mem_used', 'disk_used', 'net_rx', 'net_tx', 'net_rx_max', 'net_tx_max']) };
+        : {
+          hours: realHours,
+          step: num(data.step),
+          rows: normalizeRows(data.metrics, [
+            'cpu', 'cpu_max', 'minutes', 'mem_used', 'disk_used', 'net_rx', 'net_tx', 'net_rx_max', 'net_tx_max',
+          ]),
+        };
       cache.set(key, { t: Date.now(), data: out });
       return out;
     } finally {

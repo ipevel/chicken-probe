@@ -12,6 +12,7 @@ import {
 } from '/shared/derive.js';
 import { flagEl, mountFlagSprite } from './flag.js';
 import { nodeHistory, themeConfig, pick } from './history.js';
+import { rangesFor, rangesOn, spanFor, spanLabel, minutesLabel } from '/shared/ranges.js';
 import { renderChart, renderSpark } from './chart.js';
 import { stats as seriesStats, alignByTs } from '/shared/chart.js';
 
@@ -79,7 +80,8 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
   const sortEl = $('sort');
   const qEl = $('q');
 
-  const state = { nodes: [], filter: 'all', country: '', sort: 'problem', q: '', view: 'grid', open: null };
+  // historyDays 来自 /api/me（hub v1.3.2 起），null = 老 hub = 按 7 天算
+  const state = { nodes: [], filter: 'all', country: '', sort: 'problem', q: '', view: 'grid', open: null, historyDays: null };
   const cards = new Map();          // id -> {el, parts}
   const sparks = new Map();         // id -> 卡片上那条 1 小时 CPU 曲线的数据
   const sparkQueue = [];            // 待抓的卡片曲线（限流，别一屏几十个请求）
@@ -112,7 +114,13 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
     state.view = u.get('view') === 'list' ? 'list' : 'grid';
     if (u.get('node')) state.open = Number(u.get('node')) || null;
     if (u.get('tab') === 'latency') detail.tab = 'latency';
-    if (RANGES.some(r => r.hours === Number(u.get('hours')))) detail.hours = Number(u.get('hours'));
+    /*
+     * 只认「是个正数」，不认「在当前按钮列表里」：深链可能在 /api/me 回来之前
+     * 就被读，那时保留期还不知道；等拿到 history_days，snapHours() 会把不合法的
+     * 选择收到当时最宽的那个窗口上。
+     */
+    const h = Number(u.get('hours'));
+    if (Number.isFinite(h) && h > 0) detail.hours = h;
   }
   function writeUrl() {
     const u = new URLSearchParams();
@@ -473,6 +481,13 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
     add('续费', node.price > 0 ? `${node.price} ${node.currency} · ${node.billing_cycle}${expiringIn(node, now) != null ? ` · 还有 ${formatDays(expiringIn(node, now))}` : ''}` : '—');
     add('探针版本', node.agent_version || '未接入');
     add('连接数', m && (m.tcp != null || m.udp != null) ? `TCP ${m.tcp ?? '—'} · UDP ${m.udp ?? '—'} · 进程 ${m.procs ?? '—'}` : '—');
+    /*
+     * 备注有两种，别混成一行：public_remark 是 hub v1.3.2 起对匿名访客也下发的
+     * 公开备注（也就是主控想给所有人看的那句），remark 只在已鉴权的请求里出现，
+     * 是给管理员的私货。老 hub 两者都没有，那就不显示，不占一行灰字。
+     */
+    if (node.public_remark) add('备注', String(node.public_remark));
+    if (node.remark) add('管理备注', String(node.remark));
     if (staleFor(node, now)) add('读数停止', `${formatAge(staleFor(node, now))}前`);
 
     const dl = el('dl', 'facts drawer-facts');
@@ -500,12 +515,6 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
   //
   // 真探针页的核心是「历史」：当前值只能说明此刻，值班要看的是趋势与峰值。
   // 数据全部来自 hub 的历史接口（不加任何自己的推测），范围切换用缓存，60 秒内不重复请求。
-  const RANGES = [
-    { hours: 1, label: '1 小时' },
-    { hours: 6, label: '6 小时' },
-    { hours: 24, label: '24 小时' },
-    { hours: 168, label: '7 天' },
-  ];
   const detail = { tab: 'resources', hours: 6, loadedKey: '', loading: false, error: '', lastTryAt: 0, fetchedAt: 0, metrics: null, ping: null };
   const RETRY_AFTER_MS = 30_000;
   // 抽屉当前内容是「按哪个状态」建的：只有它没变时才允许走「只换 facts」的增量更新。
@@ -618,7 +627,8 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
 
     const m = detail.metrics;
     if (!m) { area.append(el('p', 'sub', '历史数据未加载')); return area; }
-    const { rows: withLiveRows, liveIndex } = withLive(withPct(m.rows, node), node);
+    const histRows = withPct(m.rows, node);
+    const { rows: withLiveRows, liveIndex } = withLive(histRows, node);
     if (!withLiveRows.length) {
       area.append(el('p', 'sub', '这段时间没有历史数据（机器可能一直没上报）'));
       return area;
@@ -630,11 +640,16 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
        * 网速图在均值之外再画一条峰值线：hub v1.3.1 起每分钟另存这一分钟里的
        * 最高网速，否则一次十几秒的测速会被摊到整分钟里，在 7 天窗口里看不见。
        *
-       * 只有当这批数据真的带峰值时才加（旧 hub 没有这两个字段），否则会多出
-       * 两条空序列：Y 轴被抬高、图例多两行，什么也没画出来。
+       * CPU 图同理吃 v1.3.2 新增的 cpu_max（这一格里的最高占用）。小时级汇总
+       * 取的是各分钟峰值的最大值，所以长窗口下的 CPU 峰值本来就比均值更准。
+       *
+       * 两者都只在数据真的带了峰值时才加（旧 hub 没有这些字段），否则会多出
+       * 空序列：Y 轴被抬高、图例多一行，什么也没画出来。
        */
-      const hasPeak = c.net && settings.showPeaks
+      const hasPeak = settings.showPeaks && c.net
         && withLiveRows.some(r => r.net_rx_max != null || r.net_tx_max != null);
+      const hasCpuPeak = settings.showPeaks && c.key === 'cpu'
+        && withLiveRows.some(r => r.cpu_max != null);
       const series = c.net
         ? [
           { key: 'net_tx', label: '上行', color: 'var(--c-up)', format: (v) => formatSpeed(v) },
@@ -644,17 +659,52 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
             { key: 'net_rx_max', label: '下行峰值', color: 'var(--c-down)', format: (v) => formatSpeed(v), dash: true },
           ] : []),
         ]
-        : [{ key: c.key, label: c.label, color: c.color, format: c.format }];
-      block.append(el('h3', null, `${c.label}（${detail.hours} 小时${detail.windowNote || ''}）`), host,
+        : [
+          { key: c.key, label: c.label, color: c.color, format: c.format },
+          ...(hasCpuPeak ? [
+            { key: 'cpu_max', label: 'CPU 峰值', color: c.color, format: c.format, dash: true },
+          ] : []),
+        ];
+      block.append(el('h3', null, `${c.label}（${spanLabel(detail.hours)}${detail.windowNote || ''}）`), host,
         statsStrip(series, withLiveRows, liveIndex));
       area.append(block);
       renderChart(host, { rows: withLiveRows, series, hours: detail.hours, height: c.net ? 130 : 120, yMax: c.yMax, marker: { index: liveIndex } });
+    }
+    /*
+     * 覆盖度：每行 minutes 是这一格实际折进了多少分钟行，响应里的 step 是每格
+     * 覆盖多少秒（step/60 才是满额分钟）。两者不齐就说明节点在这段时间里没有
+     * 持续上报 —— 曲线照样画，但它画出来的是「报了的那部分」，不是那段时间。
+     *
+     * 两头都得排除，而且要说清是两头：
+     *  - 尾格天然没走完（now 就在这一格里），不能算节点失职；
+     *  - 头格被保留窗口切了一半（查询从 now-hours*3600 起，格边界比它早），
+     *    那是保留期裁剪，也不是节点没上报。
+     * 只有中间那些格覆盖不满，才真的是节点中途断了。
+     *
+     * 用 histRows 而不是 withLiveRows：后者末尾可能多一个实时推送点，那个点
+     * 没有 minutes 字段，拿它当尾格会让排除落空（尾格照旧被算进去）。
+     */
+    const full = Number(m.step) > 0 ? Number(m.step) / 60 : null;
+    const middle = histRows.slice(1, -1);
+    const short = full === null ? 0 : middle.filter(r => r.minutes != null && r.minutes < full).length;
+    if (full !== null && short > 0) {
+      area.append(el('p', 'sub',
+        `每点覆盖 ${minutesLabel(full)}，其中 ${short} / ${middle.length} 个采样点没覆盖满：节点在这段时间里没有持续上报，曲线画的是它报了的那部分。`));
     }
     area.append(el('p', 'sub', `曲线来自 hub 的历史接口；末端的圆点是最近一次实时推送。${m.rows.some(r => r.cpu == null) ? ' 有空档说明当时没有上报。' : ''}`));
     return area;
   }
 
-  const rangeFor = () => (detail.tab === 'latency' ? RANGES.filter(r => r.hours <= 24) : RANGES);
+  /*
+   * 范围按钮按主控的保留期生成（见 shared/ranges.js）：history_days 是 hub v1.3.2
+   * 起才有的字段，老 hub 没有，而它恰好把匿名窗口夹在 7 天，所以兜底值就是正解。
+   */
+  const rangeFor = () => rangesOn(rangesFor(state.historyDays), detail.tab);
+
+  /** 把 detail.hours 收进当前可选列表：列表随页签与主控的保留期变。 */
+  function snapHours() {
+    detail.hours = spanFor(rangeFor(), detail.hours);
+  }
 
   /** 只在「节点 + 页签 + 范围」这个组合变了的时候才去拉数据。 */
   async function ensureDetailLoaded(node) {
@@ -669,10 +719,10 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
     try {
       if (detail.tab === 'latency') {
         detail.ping = await nodeHistory.ping(node.id, detail.hours, width);
-        if (detail.ping.hours !== detail.hours) detail.windowNote = `，主控只给了 ${detail.ping.hours} 小时`;
+        if (detail.ping.hours !== detail.hours) detail.windowNote = `，主控只给了 ${spanLabel(detail.ping.hours)}`;
       } else {
         detail.metrics = await nodeHistory.metrics(node.id, detail.hours, width);
-        if (detail.metrics.hours !== detail.hours) detail.windowNote = `，主控只给了 ${detail.metrics.hours} 小时`;
+        if (detail.metrics.hours !== detail.hours) detail.windowNote = `，主控只给了 ${spanLabel(detail.metrics.hours)}`;
       }
     } catch (e) {
       detail.error = e.message || '读取失败';
@@ -695,6 +745,8 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
   function renderDrawer({ refresh = true } = {}) {
     const node = state.nodes.find(n => n.id === state.open);
     if (!node) { drawer.classList.add('closed'); return; }
+    // 保留期是 /api/me 回来之后才有的，深链里的窗口在那一刻可能还不在列表上。
+    snapHours();
     const now = nowSec();
 
     const head = el('header');
@@ -729,7 +781,8 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
       b.onclick = () => {
         if (detail.tab === key) return;
         detail.tab = key;
-        if (key === 'latency' && detail.hours > 24) detail.hours = 24;
+        // 延迟页签没有超过 24 小时的意义，但范围按钮是按保留期生成的，不一定只到 24。
+        snapHours();
         detail.loadedKey = '';
         writeUrl();
         void renderDrawer();
@@ -833,6 +886,17 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
     }
   }
 
+  /**
+   * 主控保留多少天历史（hub v1.3.2 起 /api/me 才有这个字段）。收到就把范围按钮
+   * 扩到那么宽；抽屉正开着就重画一次，好让新按钮立刻能用。
+   */
+  function setHistoryDays(days) {
+    const kept = Math.floor(Number(days));
+    if (!Number.isFinite(kept) || kept < 1) return;
+    state.historyDays = kept;
+    if (!drawer.classList.contains('closed')) void renderDrawer();
+  }
+
   function init() {
     mountFlagSprite();
     readUrl();
@@ -885,10 +949,14 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
       detail: { tab: detail.tab, hours: detail.hours, key: detail.loadedKey, loading: detail.loading, error: detail.error,
         hasMetrics: !!detail.metrics, hasPing: !!detail.ping, windowNote: detail.windowNote || '' },
       open: state.open,
+      // 范围按钮是按主控的保留期现算的，探针要能看见「主控说保留 30 天」之后
+      // 按钮是不是真的多出来了一个、选中的窗口有没有被收进列表。
+      historyDays: state.historyDays,
+      ranges: rangeFor().map(r => r.hours),
       sparks: [...sparks.entries()].slice(0, 3).map(([id, v]) => ({ id, at: v.t, rows: v.rows?.length ?? -1 })),
       sparkHosts: [...cards.entries()].slice(0, 3).map(([id, c]) => ({ id, hasHost: !!c.sparkHost, children: c.sparkHost?.childElementCount ?? -1 })),
       sparkQueue: sparkQueue.length,
     });
   }
-  return { setNodes, setConn, setSiteName, openDetail, closeDetail, refresh: renderList };
+  return { setNodes, setConn, setSiteName, setHistoryDays, openDetail, closeDetail, refresh: renderList };
 }

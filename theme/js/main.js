@@ -38,7 +38,11 @@ const hub = createHub({
     panel.setNodes(next);
   },
   onState: (state, detail) => panel.setConn(state, detail),
-  onMe: (me) => panel.setSiteName(me.site_name),
+  onMe: (me) => {
+    panel.setSiteName(me.site_name);
+    // 主控保留多少天历史（hub v1.3.2 起才有）。老 hub 没这个字段，面板按 7 天算。
+    panel.setHistoryDays(me.history_days);
+  },
 });
 hub.start();
 document.body.classList.add('ready');
