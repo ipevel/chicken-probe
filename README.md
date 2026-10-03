@@ -270,7 +270,7 @@ npm run build:theme    # 打包主题
 
 ### 交互级探针（单测抓不到的手感与交互问题）
 
-手感、漂移、打击感、按钮点不动这类问题必须开真浏览器验。五个探针共用同一套前置：
+手感、漂移、打击感、按钮点不动这类问题必须开真浏览器验。这些探针共用同一套前置：
 
 ```bash
 msedge --headless=new --enable-unsafe-swiftshader --use-angle=swiftshader \
@@ -283,6 +283,7 @@ msedge --headless=new --enable-unsafe-swiftshader --use-angle=swiftshader \
 | 抖动 / 朝向 | `npm run probe:motion` | 静置时状态只能是 `idle`（出现 `walk` 说明站着也在摆腿）；行走时**朝向与位移的一致性 > 0.7**（负数=倒着走）；按下鼠标后 `dragging` 必须为 true |
 | 打击感 / 血条 | `npm run probe:action` | 走到一只离线探针鸡跟前出嘴：服务端要回 `npck`，且**目标名牌上的血量数字必须变小**；同时留一张 `.shots/hit.png` |
 | 面板交互 | `npm run probe:panel` | **真实鼠标点击** ⟳ 与 ✕：刷新要让「更新于 hh:mm:ss」变掉，关闭要让抽屉收起；再点卡片要立即重新打开 |
+| v1.3.2 新字段 | `npm run probe:v132` | 在页面里把 `fetch` 包一层假装主控是 v1.3.2（假 hub 故意停在老版本）：范围按钮要铺到 30 天、CPU 图例要有「CPU 峰值」、覆盖度说明要说「1 小时」而不是「3 天」、切延迟页签要收回 24 小时；**摘掉补丁后这些一个都不许冒出来** |
 | 残血逃跑 | `node tools/flee-probe.mjs` | 打到残血后：净逃开 ≥ 15 米、速度 > 5.4 m/s、单帧位移连续（不是瞬移） |
 
 鸡场与面板各有一个调试缝读状态，只有带 `?dbg=1` 打开才挂到 `window`，常态页面不留全局对象。
@@ -373,7 +374,7 @@ chicken-probe/
 ├── tools/            打包脚本、交互探针与探针判定模块
 │   ├── build-theme.mjs     打包主题（含缓存击穿）
 │   ├── smoke.mjs           端到端冒烟
-│   ├── *-probe.mjs         交互探针（drift / motion / action / panel / flee / hud-top）
+│   ├── *-probe.mjs         交互探针（drift / motion / action / panel / flee / hud-top / v132）
 │   └── hud-top-verdict.mjs 窄屏探针的判定纯函数（被探针与单测共用，可独立自证）
 ├── docs/             设计文档与视觉改造规格
 │   └── visual-refresh-20260929*.md   三份视觉改造规格（含可执行判据）

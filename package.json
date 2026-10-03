@@ -15,6 +15,7 @@
     "probe:motion": "node tools/motion-probe.mjs",
     "probe:action": "node tools/action-probe.mjs",
     "probe:panel": "node tools/panel-probe.mjs",
+    "probe:v132": "node tools/v132-probe.mjs",
     "probe:hud-top": "node tools/hud-top-probe.mjs"
   },
   "dependencies": {
