@@ -8,6 +8,7 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, resolve, sep } from 'node:path';
+import { gzipSync } from 'node:zlib';
 import { WebSocketServer } from 'ws';
 import { createFleet } from './probe.js';
 import { createNpcManager } from './npcs.js';
@@ -151,9 +152,13 @@ const server = createServer(async (req, res) => {
 // /api/ws：hub 是 2 秒一推的 {nodes, admin}；这里照抄帧形状与节奏
 const hub = new WebSocketServer({ noServer: true });
 server.on('upgrade', (req, socket, head) => {
-  let pathname;
+  let pathname, wantGzip = false;
   try {
-    pathname = new URL(req.url, 'http://localhost').pathname;
+    const url = new URL(req.url, 'http://localhost');
+    pathname = url.pathname;
+    // hub v1.4.0：公开帧可以要 gzip 二进制（100 台约 110KB → 15KB）。真 hub 在站长
+    // 登录着打开公开页时不压，这里没有登录态，带 ?gzip 就一律压 —— 客户端两种都要能收。
+    wantGzip = url.searchParams.has('gzip');
   } catch {
     socket.destroy();
     return;
@@ -162,7 +167,8 @@ server.on('upgrade', (req, socket, head) => {
     hub.handleUpgrade(req, socket, head, (ws) => {
       const push = () => {
         if (ws.readyState !== 1) return;
-        ws.send(JSON.stringify({ nodes: fleet.views(), admin: false }));
+        const body = JSON.stringify({ nodes: fleet.views(), admin: false });
+        ws.send(wantGzip ? gzipSync(body) : body);
       };
       push();
       const timer = setInterval(push, 2000);

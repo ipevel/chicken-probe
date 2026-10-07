@@ -402,6 +402,9 @@ export function createFleet() {
           online: n.online,
           country: s.country,
           last_seen: n.last_seen,
+          // hub v1.4.0 起按自己的时钟算好「多久没上报」发下来：访客时钟快 8 小时时，
+          // 减浏览器时钟会把刚掉的机器说成离线 8 小时。从没上报过是 null。
+          last_seen_ago: n.last_seen ? Math.max(0, Math.floor(Date.now() / 1000) - n.last_seen) : null,
           metrics: m,
           os: s.os, kernel: s.kernel, arch: s.arch, virt: s.virt,
           cpu_name: s.cpu, cpu_cores: s.cores,

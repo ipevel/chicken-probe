@@ -32,6 +32,21 @@ test('陈旧只在「在线但停报超过 120 秒」时成立，从没上报过
   assert.equal(statusOf(node({ last_seen: NOW - 300 }), NOW), 'stale');
 });
 
+test('hub 给了 last_seen_ago 就用它，访客时钟快慢都不影响', () => {
+  // hub v1.4.0 起按自己的时钟算好秒数发下来。减浏览器时钟的老算法会跟着访客
+  // 的钟漂：快 8 小时的机器看一台刚掉线十分钟的机器，会显示成离线 8 小时。
+  const gone = node({ online: false, last_seen: NOW - 600, last_seen_ago: 600 });
+  const fast = NOW + 8 * 3600;
+  assert.equal(formatAge(fast - gone.last_seen), '8 小时', '这正是 hub 要修的那个错');
+  assert.equal(statusNote(gone, fast), '离线 10 分钟');
+  assert.equal(statusNote(gone, NOW), '离线 10 分钟', '本机时钟准也一样');
+
+  assert.equal(staleFor(node({ last_seen_ago: 300 }), NOW), 300);
+  assert.equal(statusOf(node({ last_seen_ago: 300 }), NOW), 'stale');
+  assert.equal(staleFor(node({ last_seen_ago: 100 }), NOW), null, 'hub 说没到阈值就不算陈旧');
+  assert.equal(staleFor(node({ last_seen_ago: null, last_seen: NOW - 300 }), NOW), 300, '旧 hub 没这个字段时退回 last_seen');
+});
+
 test('状态优先级：离线 > 陈旧 > 读不到 > 超流量 > 超阈 > 即将到期 > 正常', () => {
   assert.equal(statusOf(node({ online: false, last_seen: NOW - 999 }), NOW), 'offline');
   assert.equal(statusOf(node({ last_seen: NOW - 999 }), NOW), 'stale');

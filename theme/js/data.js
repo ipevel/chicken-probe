@@ -68,10 +68,21 @@ export function createHub({ onNodes, onState, onMe, path = '/api' } = {}) {
     }
   }
 
+  // gzip 解压：hub v1.4.0 起 /api/ws?gzip 推二进制帧。旧 hub 或站长登录时仍推文本帧。
+  const canGzip = typeof DecompressionStream !== 'undefined';
+
+  async function decompressGzip(data) {
+    const ds = new DecompressionStream('gzip');
+    const stream = new Blob([data]).stream().pipeThrough(ds);
+    return await new Response(stream).text();
+  }
+
   function connect() {
     if (disposed) return;
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const url = `${proto}://${location.host}${path}/ws`;
+    const url = canGzip
+      ? `${proto}://${location.host}${path}/ws?gzip`
+      : `${proto}://${location.host}${path}/ws`;
     let ws;
     try {
       ws = new WebSocket(url);
@@ -91,14 +102,21 @@ export function createHub({ onNodes, onState, onMe, path = '/api' } = {}) {
       if (Date.now() - updatedAt > WATCHDOG_MS) ws.close();
     }, 1000);
 
-    ws.onmessage = (event) => {
+    ws.onmessage = async (event) => {
+      let text;
+      if (typeof event.data === 'string') {
+        text = event.data;
+      } else {
+        try { text = await decompressGzip(event.data); } catch { return; }
+      }
       let payload;
-      try { payload = JSON.parse(String(event.data)); } catch { return; }
+      try { payload = JSON.parse(text); } catch { return; }
       if (Array.isArray(payload.nodes)) receive(payload.nodes, 'live');
     };
     ws.onclose = () => {
       clearInterval(watchdog);
       if (disposed) return;
+      if (document.visibilityState !== 'visible') return;
       if (poll == null) poll = setInterval(fetchOnce, POLL_MS);
       setState('reconnecting', `第 ${attempts + 1} 次重连`);
       clearTimeout(retry);
@@ -106,6 +124,22 @@ export function createHub({ onNodes, onState, onMe, path = '/api' } = {}) {
     };
     ws.onerror = () => {};
   }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void fetchOnce();
+        if (!socket || socket.readyState === WebSocket.CLOSED) {
+          connect();
+        } else if (Date.now() - updatedAt > WATCHDOG_MS) {
+          socket.close();
+        }
+      } else {
+        if (poll) { clearInterval(poll); poll = null; }
+        inflight = false;
+        try { socket?.close(); } catch {}
+      }
+    };
+    addEventListener('visibilitychange', onVisibilityChange);
 
   return {
     get state() { return state; },
@@ -119,6 +153,7 @@ export function createHub({ onNodes, onState, onMe, path = '/api' } = {}) {
     refresh() { return fetchOnce(); },
     stop() {
       disposed = true;
+      removeEventListener('visibilitychange', onVisibilityChange);
       clearInterval(poll); clearInterval(watchdog); clearTimeout(retry);
       poll = null; watchdog = null; retry = null;
       try { socket?.close(); } catch {}

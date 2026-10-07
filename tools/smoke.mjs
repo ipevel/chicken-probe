@@ -9,6 +9,7 @@
 // 端口用 PORT 环境变量覆盖。
 
 import { WebSocket } from 'ws';
+import { gunzipSync } from 'node:zlib';
 
 const PORT = Number(process.env.PORT) || 7788;
 const base = `http://localhost:${PORT}`;
@@ -42,8 +43,14 @@ check('/api/nodes 有节点', Array.isArray(nodes) && nodes.length > 0, `${nodes
 check('匿名 payload 不泄露 ip/hostname/remark/token',
   nodes.every(n => !('ip' in n) && !('hostname' in n) && !('remark' in n) && !('token' in n)));
 
-const required = ['id', 'name', 'online', 'country', 'last_seen', 'metrics', 'cpu_cores', 'traffic_limit', 'expires_at'];
+const required = ['id', 'name', 'online', 'country', 'last_seen', 'last_seen_ago', 'metrics', 'cpu_cores', 'traffic_limit', 'expires_at'];
 check('节点字段齐全', nodes.every(n => required.every(k => k in n)));
+// hub v1.4.0：离线时长由 hub 按自己的时钟算好发下来，从没上报过是 null ——
+// 面板不该拿 last_seen 减访客时钟，这里先钉住这个契约
+check('离线时长 last_seen_ago 的契约（未接入为 null）',
+  nodes.every(n => n.last_seen === 0
+    ? n.last_seen_ago === null
+    : typeof n.last_seen_ago === 'number' && n.last_seen_ago >= 0));
 
 // 假数据必须覆盖所有边界态，否则面板与鸡场里的每个状态就没东西可验
 const has = (pred, label) => check(`假数据含「${label}」`, nodes.some(pred));
@@ -156,6 +163,35 @@ await new Promise((done) => {
   ws.on('close', () => {
     check('hub 实时流帧形状 {nodes, admin:false}', shapeOk);
     check('hub 实时流推送节奏 ≈2s', gap >= 1200 && gap <= 3500, `${gap}ms`);
+    done();
+  });
+});
+
+// ---------------- hub 实时流：?gzip 推 gzip 二进制帧（v1.4.0）----------------
+// 主题连的就是带 ?gzip 的地址，所以这条要真的解一次 gzip —— 帧是二进制还是文本
+// 由 hub 决定（旧 hub / 站长登录时是文本），客户端两条路都得走得通。
+await new Promise((done) => {
+  const ws = open('/api/ws?gzip');
+  let bin = 0, text = 0, shapeOk = false, bytes = 0;
+  ws.on('message', (buf, isBinary) => {
+    if (isBinary) {
+      bin++;
+      bytes = buf.length;
+      try {
+        const m = JSON.parse(gunzipSync(buf).toString());
+        shapeOk = Array.isArray(m.nodes) && m.admin === false;
+      } catch { shapeOk = false; }
+    } else {
+      text++;
+    }
+    if (bin >= 1) ws.close();
+  });
+  after(10000, () => { check('?gzip 推二进制帧', false, '10 秒没收到二进制帧'); ws.close(); });
+  ws.on('error', () => { check('?gzip 可连', false, '连接失败'); done(); });
+  ws.on('close', () => {
+    check('?gzip 帧是 gzip 的 {nodes, admin:false}',
+      bin >= 1 && text === 0 && shapeOk,
+      `二进制 ${bin} 帧（${bytes} B）/ 文本 ${text} 帧`);
     done();
   });
 });

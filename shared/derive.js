@@ -18,6 +18,9 @@ export function deployed(node) {
 
 /** 读数停了多久（秒）。0 或没有 last_seen 表示从没上报过，不算陈旧。 */
 export function staleFor(node, now = nowSec()) {
+  if (node.last_seen_ago != null) {
+    return node.last_seen_ago > STALE_AFTER ? node.last_seen_ago : null;
+  }
   if (!node.last_seen) return null;
   const age = now - node.last_seen;
   return age > STALE_AFTER ? age : null;
@@ -204,7 +207,7 @@ export function statusNote(node, now = nowSec()) {
   const s = statusOf(node, now);
   switch (s) {
     case 'offline': {
-      const gone = node.last_seen ? now - node.last_seen : null;
+      const gone = node.last_seen_ago ?? (node.last_seen ? now - node.last_seen : null);
       return gone != null ? `离线 ${formatAge(gone)}` : '离线';
     }
     case 'unconnected': return '未接入探针';

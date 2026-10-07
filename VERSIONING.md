@@ -3,7 +3,7 @@
 本仓库遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。本文说明「什么算破坏性变更」、
 版本号与 tag 怎么写，以及 CI 门禁会拦什么。改版本号前请先读完前两节。
 
-本项目当前处于 **0.y.z 初始开发期**（现在 0.4.3）：接口还没冻结，1.0.0 之前
+本项目当前处于 **0.y.z 初始开发期**（现在 0.6.0）：接口还没冻结，1.0.0 之前
 SemVer 不承诺稳定性。见第 3 节。
 
 ## 1. 什么是本项目的公共 API
@@ -19,7 +19,7 @@ SemVer 不承诺稳定性。见第 3 节。
 | 状态判定 | `shared/derive.js` 的 `statusOf`：面板卡片、鸡的姿态、HUD 告警数读的是同一份判定 | 面板与鸡场必须一致，见 README 第六节 |
 | 联机服务配置 | `server/config.json` 的字段（`hub`/`host`/`port`/`path`/`static`/`websites`）、命令行参数、`PORT` 环境变量 | `deploy.sh`、systemd unit、运维脚本 |
 | `/healthz` 响应结构 | `ok` / `room` / `npc` / `hub` / `websites` 五个键 | README 2.7 的排错表、监控 |
-| hub 接口消费集合 | `GET /api/nodes`、`/api/ws`、`GET /api/nodes/{id}/metrics`、`GET /api/me`，以及从它们读出的字段：`/api/me` 的 `site_name` 与 `history_days`（v1.3.2 起）、指标行的 `cpu`/`mem_used`/`disk_used`/`net_rx`/`net_tx`/`net_rx_max`/`net_tx_max`（后两者 v1.3.1 起）/`cpu_max`/`minutes`（后两者 v1.3.2 起）、响应的 `hours` 与 `step`（v1.3.2 起） | 主题首屏、范围按钮、曲线与峰值线、覆盖度说明 |
+| hub 接口消费集合 | `GET /api/nodes`、`/api/ws`（v1.4.0 起带 `?gzip` 收 gzip 二进制帧；旧 hub 与站长登录时仍推文本帧，两种都收）、`GET /api/nodes/{id}/metrics`、`GET /api/me`，以及从它们读出的字段：`/api/me` 的 `site_name` 与 `history_days`（v1.3.2 起）、指标行的 `cpu`/`mem_used`/`disk_used`/`net_rx`/`net_tx`/`net_rx_max`/`net_tx_max`（后两者 v1.3.1 起）/`cpu_max`/`minutes`（后两者 v1.3.2 起）、响应的 `hours` 与 `step`（v1.3.2 起）、节点的 `last_seen_ago`（v1.4.0 起，缺失时回退 `last_seen`） | 主题首屏、范围按钮、曲线与峰值线、覆盖度说明、离线时长 |
 | 部署契约 | `deploy.sh` 的命令行选项、`chicken-room` 服务名、反代路径 `/room/`、默认端口 7789 | README 第二章的每一条命令 |
 | 浏览器存储键 | `chicken-probe:room`（localStorage）、玩家令牌所在的 sessionStorage | 用户的本地覆盖与多标签页身份 |
 
@@ -34,7 +34,7 @@ SemVer 不承诺稳定性。见第 3 节。
 | 递增位 | 何时递增 | 本项目典型例子 |
 | --- | --- | --- |
 | **MAJOR**（X） | 删除或重命名联机消息字段 / 消息类型；改 `statusOf` 的判定口径；改 `server/config.json` 或命令行参数的含义；改 `/healthz` 结构；把部署契约里的路径、端口、服务名换掉 | 把 `npck` 的 `icon` 从自由字符串改成枚举 |
-| **MINOR**（Y） | 新增消息类型或可选字段（老客户端能忽略）；新增面板功能页签 / 节点指标；新增 `websites` 项的字段；新增 `deploy.sh` 选项 | v0.3.0 面板右上角「管理」入口、v0.4.0 残血逃跑、**v0.5.0 跟上 hub v1.3.2 的新字段**（范围铺到 `history_days`、CPU 峰值线、覆盖度说明、`public_remark`） |
+| **MINOR**（Y） | 新增消息类型或可选字段（老客户端能忽略）；新增面板功能页签 / 节点指标；新增 `websites` 项的字段；新增 `deploy.sh` 选项 | v0.3.0 面板右上角「管理」入口、v0.4.0 残血逃跑、**v0.5.0 跟上 hub v1.3.2 的新字段**（范围铺到 `history_days`、CPU 峰值线、覆盖度说明、`public_remark`）、**v0.6.0 跟上 hub v1.4.0**（`/api/ws?gzip` 二进制帧、`last_seen_ago` 离线时长、切回前台刷新、`apple-touch-icon`） |
 | **PATCH**（Z） | 纯修复：数值算错、文案错、排序错、图标缺失、动效抖动、CI 缺陷、许可证补齐 | v0.4.2 撤回 0.4.1 的 SVG sprite、v0.4.3 修图表读数 |
 
 判断口诀：**已装的主题 + 已部署的服务，在不重新部署任何一方的前提下还能不能继续用**。
@@ -92,7 +92,7 @@ SemVer 不承诺稳定性。见第 3 节。
 npm test
 
 python3 tools/version_gate.py \
-  --tag v0.4.4 \
+  --tag v0.6.0 \
   --version-file package.json:version \
   --version-file theme/theme.json:version \
   --check-commits \
