@@ -23,7 +23,14 @@
   // 亮暗在首屏前定好：放在 effect 里会让暗色访客每次加载闪一下白
   (() => {
     const key = 'chicken-probe:theme';
-    const saved = localStorage.getItem(key);
+    // 站点数据被禁用时 getItem 会抛 SecurityError，这里在首屏 IIFE 里：
+    // 抛出去整页就白屏。读不到就当没设置，回落系统偏好。
+    let saved = null;
+    try {
+      saved = localStorage.getItem(key);
+    } catch {
+      saved = null;
+    }
     const dark = saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
     document.documentElement.classList.toggle('dark', dark);
   })();

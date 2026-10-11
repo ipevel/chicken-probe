@@ -71,6 +71,10 @@ const m = await hist(NODE, 'hours=24&points=300&series=metrics');
 check('历史指标 series=metrics 有数据', Array.isArray(m.metrics) && m.metrics.length > 0, `${m.metrics?.length ?? 0} 点`);
 check('历史指标每点字段齐全',
   m.metrics.every(p => ['ts', 'cpu', 'mem_used', 'disk_used', 'net_rx', 'net_tx'].every(k => k in p)));
+// v1.4.1：交换与连接数四项跟着历史一起下来；健康节点每点都该有数值
+check('历史指标含 v1.4.1 四项（swap_used/tcp/udp/procs）',
+  m.metrics.every(p => ['swap_used', 'tcp', 'udp', 'procs'].every(k => k in p && typeof p[k] === 'number')),
+  `swap_used ${m.metrics[0]?.swap_used} tcp ${m.metrics[0]?.tcp} udp ${m.metrics[0]?.udp} procs ${m.metrics[0]?.procs}`);
 check('历史指标 ts 单调递增', m.metrics.every((p, i) => i === 0 || p.ts > m.metrics[i - 1].ts));
 // 5 分钟一格，24 小时只有 288 格 —— 要 300 个点也给不出来，但绝不能超过请求的点数
 check('points=300 时条数落在 250~300（降采样生效）',
@@ -141,6 +145,9 @@ const gm = await hist(garbled.id, 'hours=6&points=300&series=metrics');
 check('指标读不到的机器保留 ts、核心字段为 null',
   gm.metrics.length > 0 && gm.metrics.every(p => Number.isFinite(p.ts) && p.cpu === null && p.mem_used === null && p.disk_used === null),
   `${gm.metrics.length} 点`);
+// v1.4.1 的四项与核心字段同生共死：读不出来就都是 null，不能画成 0
+check('指标读不到时 v1.4.1 四项也是 null',
+  gm.metrics.every(p => p.swap_used === null && p.tcp === null && p.udp === null && p.procs === null));
 
 const miss = await fetch(histUrl(9999, 'hours=1&series=metrics'));
 check('未知节点的历史返回 404', miss.status === 404, `status=${miss.status}`);

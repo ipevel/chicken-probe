@@ -526,6 +526,10 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
     { key: 'cpu', label: 'CPU', color: 'var(--c-cpu)', format: (v) => `${v.toFixed(0)}%`, yMax: 100 },
     { key: 'mem', label: '内存', color: 'var(--c-mem)', format: (v) => `${v.toFixed(0)}%`, yMax: 100 },
     { key: 'disk', label: '硬盘', color: 'var(--c-disk)', format: (v) => `${v.toFixed(0)}%`, yMax: 100 },
+    // 交换与内存/硬盘同构：历史行只有 used，百分比拿节点当前的 swap_total 算。
+    { key: 'swap', label: '交换', color: 'var(--c-swap)', format: (v) => `${v.toFixed(0)}%`, yMax: 100 },
+    // 连接数是三条计数线（TCP/UDP/进程），没有总量可除，Y 轴交给 renderChart 自适应。
+    { key: 'conn', label: '连接数', color: 'var(--c-tcp)', format: (v) => v.toFixed(0), conn: true },
     { key: 'net', label: '网络', color: 'var(--c-up)', format: (v) => formatSpeed(v), net: true },
   ];
 
@@ -533,10 +537,13 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
   function withPct(rows, node) {
     const memTotal = node.metrics?.mem_total || node.mem_total || 0;
     const diskTotal = node.metrics?.disk_total || node.disk_total || 0;
+    const swapTotal = node.metrics?.swap_total || node.swap_total || 0;
     return rows.map(r => ({
       ...r,
       mem: r.mem_used != null && memTotal ? (r.mem_used / memTotal) * 100 : null,
       disk: r.disk_used != null && diskTotal ? (r.disk_used / diskTotal) * 100 : null,
+      // 旧 hub 没有 swap_used：整列 null，交换图就不画线（而不是画成 0）。
+      swap: r.swap_used != null && swapTotal ? (r.swap_used / swapTotal) * 100 : null,
     }));
   }
 
@@ -548,6 +555,7 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
     if (last && Date.now() - last.ts < 60_000) return { rows, liveIndex: -1 };   // 刚有的点，别叠
     const memTotal = node.metrics?.mem_total || node.mem_total || 0;
     const diskTotal = node.metrics?.disk_total || node.disk_total || 0;
+    const swapTotal = node.metrics?.swap_total || node.swap_total || 0;
     const row = {
       ts: Date.now(),
       cpu: m.cpu ?? null,
@@ -559,6 +567,11 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
       net_tx_max: m.net_tx ?? null,
       mem: m.mem_used != null && memTotal ? (m.mem_used / memTotal) * 100 : null,
       disk: m.disk_used != null && diskTotal ? (m.disk_used / diskTotal) * 100 : null,
+      swap: m.swap_used != null && swapTotal ? (m.swap_used / swapTotal) * 100 : null,
+      // 连接数三项是计数，实时值直接接在历史尾巴上（旧 hub 没有就是 null）。
+      tcp: m.tcp ?? null,
+      udp: m.udp ?? null,
+      procs: m.procs ?? null,
     };
     return { rows: [...rows, row], liveIndex: rows.length };
   }
@@ -650,6 +663,17 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
         && withLiveRows.some(r => r.net_rx_max != null || r.net_tx_max != null);
       const hasCpuPeak = settings.showPeaks && c.key === 'cpu'
         && withLiveRows.some(r => r.cpu_max != null);
+      /*
+       * 交换与连接数两张图吃的是 hub v1.4.1 才有的字段，旧 hub 整列都是 null。
+       * 没有数据的序列一条都不加，整张图也就整块不建 —— 否则会多出一块空图
+       * 和几行只写着「—」的图例（与上面峰值线同一处理：空序列会把 Y 轴抬高、
+       * 图例多一行，什么也没画出来）。字段是后加的，窗口里可能只有一段有值，
+       * 那时照常画，缺的那段由 renderChart 在 null 处断开。
+       */
+      const hasSwap = c.key === 'swap' && withLiveRows.some(r => r.swap != null);
+      const hasConn = c.key === 'conn'
+        && withLiveRows.some(r => r.tcp != null || r.udp != null || r.procs != null);
+      if ((c.key === 'swap' && !hasSwap) || (c.key === 'conn' && !hasConn)) continue;
       const series = c.net
         ? [
           { key: 'net_tx', label: '上行', color: 'var(--c-up)', format: (v) => formatSpeed(v) },
@@ -659,16 +683,28 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
             { key: 'net_rx_max', label: '下行峰值', color: 'var(--c-down)', format: (v) => formatSpeed(v), dash: true },
           ] : []),
         ]
-        : [
-          { key: c.key, label: c.label, color: c.color, format: c.format },
-          ...(hasCpuPeak ? [
-            { key: 'cpu_max', label: 'CPU 峰值', color: c.color, format: c.format, dash: true },
-          ] : []),
-        ];
+        : c.conn
+          ? [
+            ...(withLiveRows.some(r => r.tcp != null) ? [
+              { key: 'tcp', label: 'TCP', color: 'var(--c-tcp)', format: (v) => v.toFixed(0) },
+            ] : []),
+            ...(withLiveRows.some(r => r.udp != null) ? [
+              { key: 'udp', label: 'UDP', color: 'var(--c-udp)', format: (v) => v.toFixed(0) },
+            ] : []),
+            ...(withLiveRows.some(r => r.procs != null) ? [
+              { key: 'procs', label: '进程', color: 'var(--c-procs)', format: (v) => v.toFixed(0) },
+            ] : []),
+          ]
+          : [
+            { key: c.key, label: c.label, color: c.color, format: c.format },
+            ...(hasCpuPeak ? [
+              { key: 'cpu_max', label: 'CPU 峰值', color: c.color, format: c.format, dash: true },
+            ] : []),
+          ];
       block.append(el('h3', null, `${c.label}（${spanLabel(detail.hours)}${detail.windowNote || ''}）`), host,
         statsStrip(series, withLiveRows, liveIndex));
       area.append(block);
-      renderChart(host, { rows: withLiveRows, series, hours: detail.hours, height: c.net ? 130 : 120, yMax: c.yMax, marker: { index: liveIndex } });
+      renderChart(host, { rows: withLiveRows, series, hours: detail.hours, height: (c.net || c.conn) ? 130 : 120, yMax: c.yMax, marker: { index: liveIndex } });
     }
     /*
      * 覆盖度：每行 minutes 是这一格实际折进了多少分钟行，响应里的 step 是每格
@@ -937,7 +973,13 @@ export function createPanel({ onEnterFarm, settings: settingsIn = {} } = {}) {
     const themeBtn = $('theme-btn');
     themeBtn.onclick = () => {
       const dark = document.documentElement.classList.toggle('dark');
-      localStorage.setItem('chicken-probe:theme', dark ? 'dark' : 'light');
+      // 写不进去（站点数据被禁用）不该让开关「啪」地弹回：明暗已经切了，
+      // 只是这次不记住，下次加载回落系统偏好。
+      try {
+        localStorage.setItem('chicken-probe:theme', dark ? 'dark' : 'light');
+      } catch {
+        // 忽略：切明暗本身不受影响
+      }
     };
     if (state.open != null) renderDrawer();
   }

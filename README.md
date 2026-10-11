@@ -242,7 +242,7 @@ export const ROOM_PATH = '/room/ws';
 |---|---|
 | 节点列表（首屏） | `GET /api/nodes` |
 | 实时推送（2 秒一帧） | `/api/ws`（v1.4.0 起带 `?gzip` 收 gzip 二进制帧；旧 hub 与站长登录时仍推文本帧，两种都收） |
-| 历史资源曲线 | `GET /api/nodes/{id}/metrics?hours=1\|6\|24\|168&points=300..1500&series=metrics` |
+| 历史资源曲线 | `GET /api/nodes/{id}/metrics?hours=1\|6\|24\|168&points=300..1500&series=metrics`（v1.4.1 起每行多 `swap_used`/`tcp`/`udp`/`procs` 四项：交换已用量与 TCP/UDP/进程计数，旧 hub 没有就是 null，曲线不画而不是画成 0） |
 | 历史延迟与丢包 | 同上的 `series=ping`（多探测线 + `loss`） |
 | 站点名 / 公开页开关 | `GET /api/me` |
 

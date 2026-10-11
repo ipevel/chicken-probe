@@ -1,11 +1,12 @@
-// hub 上游更新的适配回归。
-//
-// 覆盖三件事，都对应 hub v1.3.1 的实际行为（对着上游 Rust 源码核过）：
-//   1. net_rx_max / net_tx_max —— 每分钟的峰值网速，旧 hub 没有这两个字段
-//   2. hub 的错误正文改成了一句中文，且是 text/plain
-//   3. 主题设置：theme.json 声明 config，hub 原样存值、不做校验
+// hub 上游更新的适配回归，按 hub 版本分节（对着上游 Rust 源码核过）：
+//   1. 峰值网速字段 —— net_rx_max / net_tx_max，旧 hub 没有这两个字段
+//   2. 错误文案 —— hub 的报错正文改成了一句中文，且是 text/plain
+//   3. v1.4.1 新增历史字段 —— swap_used / tcp / udp / procs，旧 hub 同样没有
+//   4. 主题设置 —— theme.json 声明 config，hub 原样存值、不做校验
 //
 // 不测实现细节，只锁住「上游发什么、我们怎么反应」这条契约。
+// 存储安全（localStorage 读写包 try/catch）不在这里测：纯 Node 没有 DOM，
+// 为它引 jsdom 不划算，浏览器里手工验（站点数据被禁用时页面不白屏）。
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -80,6 +81,43 @@ test('旧 hub 的英文原始错误、HTML 页面、空响应都不放行', () =
   assert.equal(hubText('中'.repeat(300)), '');
   assert.equal(hubText(null), '');
   assert.equal(hubText(undefined), '');
+});
+
+// ---- v1.4.1：交换与连接数四项 ----
+
+test('v1.4.1 四项是数字就原样保留', () => {
+  const rows = normalizeRows(
+    [{ ts: 100, swap_used: 78589768, tcp: 66, udp: 10, procs: 122 }],
+    ['swap_used', 'tcp', 'udp', 'procs'],
+  );
+  assert.equal(rows[0].swap_used, 78589768);
+  assert.equal(rows[0].tcp, 66);
+  assert.equal(rows[0].udp, 10);
+  assert.equal(rows[0].procs, 122);
+});
+
+test('v1.4.1 四项非数字按缺失处理', () => {
+  const rows = normalizeRows(
+    [{ ts: 1, swap_used: 'lots', tcp: null, udp: NaN, procs: {} }],
+    ['swap_used', 'tcp', 'udp', 'procs'],
+  );
+  assert.equal(rows[0].swap_used, null);
+  assert.equal(rows[0].tcp, null);
+  assert.equal(rows[0].udp, null);
+  assert.equal(rows[0].procs, null);
+});
+
+test('旧 hub 没有 v1.4.1 四项时整列是 null，曲线不画而不是画成 0', () => {
+  // 关键：与峰值字段同理 —— 缺失 ≠ 0。交换画成 0 会读成「这台机器没用交换
+  // 分区」，连接数画成 0 会读成「一个进程都没有」，而事实是 hub 版本太老。
+  const rows = normalizeRows(
+    [{ ts: 100, cpu: 1, mem_used: 500 }],
+    ['cpu', 'mem_used', 'swap_used', 'tcp', 'udp', 'procs'],
+  );
+  assert.equal(rows[0].swap_used, null);
+  assert.equal(rows[0].tcp, null);
+  assert.equal(rows[0].udp, null);
+  assert.equal(rows[0].procs, null);
 });
 
 // ---- 主题设置 ----

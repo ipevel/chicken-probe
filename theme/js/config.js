@@ -18,7 +18,14 @@ export const ROOM_PATH = '/room/ws';
  */
 export function roomUrl() {
   const hash = /[#&]room=([^&]+)/.exec(location.hash);   // 允许 #farm&room=... 这样写
-  const saved = localStorage.getItem('chicken-probe:room');
+  // 站点数据被禁用时 getItem 会抛 SecurityError，而这里在鸡场初始化路径上：
+  // 抛出去就是白屏。读不到就当没设置，回落默认地址。
+  let saved = null;
+  try {
+    saved = localStorage.getItem('chicken-probe:room');
+  } catch {
+    saved = null;
+  }
   // 畸形编码（#room=%）会让 decodeURIComponent 抛错，而这里在鸡场初始化路径上：
   // 抛出去就是白屏。解不出来就当没设置，回落默认地址。
   let raw = '';

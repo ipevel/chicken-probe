@@ -133,6 +133,15 @@ function histSample(s, id, g, goneGrid) {
   const burst = histNoise(id, 19, Math.floor(g / 3)) > 0.93 ? 6 : 1;
   const flow = (base, salt, spread) => base * burst * (1 + spread * dayWave(g, ph + 0.9) + (histNoise(id, salt, g) - 0.5) * 0.3);
   const garbled = s.preset === 'metrics_garbled';
+  // v1.4.1 的四项：交换已用量（字节）与 TCP/UDP/进程计数。读不出来的那台
+  // （garbled）和没内存的机器（mem_used 也是 null）同样给 null —— 曲线断在这里，
+  // 而不是掉到 0 变成「这台机器一个进程都没有」。
+  // 盐（salt）是 histNoise 的整数入参，取 37/41/43/47 这几个还没被上面用掉的，
+  // 否则四项会跟已有那条曲线共用同一串噪声，看着像「有关系」
+  const swapPct = Math.max(0, (gone ? 3 : s.preset === 'mem_warn' ? 42 : 3)
+    + 2 * dayWave(g, ph + 2.3) + (histNoise(id, 37, g) - 0.5) * 1.5);
+  const count = (base, salt, wave) => Math.max(0, Math.round(base
+    + 6 * dayWave(g, ph + wave) + (histNoise(id, salt, g) - 0.5) * 8));
   return {
     // 「指标读不到」那台：hub 有记录但核心字段一个也读不出来。ts 必须留着 ——
     // 客户端靠它区分「采到了但读不出」和「这段机器根本不在」
@@ -141,6 +150,10 @@ function histSample(s, id, g, goneGrid) {
     disk_used: garbled || !s.disk ? null : (s.disk * diskPct) / 100,
     net_rx: flow(s.preset === 'quota_over' ? 6e6 : 4e5, 23, 0.25),
     net_tx: flow(s.preset === 'quota_over' ? 2e6 : 9e4, 29, 0.3),
+    swap_used: garbled || !s.mem ? null : Math.round((2 * GB * swapPct) / 100),
+    tcp: garbled ? null : count(70, 41, 4.1),
+    udp: garbled ? null : count(15, 43, 5.3),
+    procs: garbled ? null : count(120, 47, 6.5),
   };
 }
 
@@ -166,6 +179,7 @@ function createHist(id, spec, goneAt) {
     goneGrid: goneAt == null ? Infinity : Math.floor((goneAt * 1000) / HIST_STEP),
     grid: -1,                                  // 已写入的最新格号，-1 = 还没写过
     cpu: histCol(), mem: histCol(), disk: histCol(), rx: histCol(), tx: histCol(),
+    swap: histCol(), tcp: histCol(), udp: histCol(), procs: histCol(),
   };
 }
 
@@ -177,6 +191,10 @@ function histWrite(h, g) {
   h.disk[i] = v && Number.isFinite(v.disk_used) ? v.disk_used : NaN;
   h.rx[i] = v ? v.net_rx : NaN;
   h.tx[i] = v ? v.net_tx : NaN;
+  h.swap[i] = v && Number.isFinite(v.swap_used) ? v.swap_used : NaN;
+  h.tcp[i] = v && Number.isFinite(v.tcp) ? v.tcp : NaN;
+  h.udp[i] = v && Number.isFinite(v.udp) ? v.udp : NaN;
+  h.procs[i] = v && Number.isFinite(v.procs) ? v.procs : NaN;
 }
 
 function histEnsure(h, endGrid) {
@@ -218,13 +236,16 @@ function bucketRanges(m, points) {
 
 function metricSeries(node, startGrid, endGrid, points) {
   const h = node.hist;
-  const ts = [], cpu = [], mem = [], disk = [], rx = [], tx = [];
+  const ts = [], cpu = [], mem = [], disk = [], rx = [], tx = [], swap = [], tcp = [], udp = [], procs = [];
   for (let g = startGrid; g <= endGrid; g++) {
     const i = ((g % HIST_CAP) + HIST_CAP) % HIST_CAP;
     const c = h.cpu[i], m = h.mem[i], d = h.disk[i], r = h.rx[i], x = h.tx[i];
-    // 整格都没有读数（未接入 / 失联之后）就整条不输出：曲线断在这里，而不是掉到 0
+    // 整格都没有读数（未接入 / 失联之后）就整条不输出：曲线断在这里，而不是掉到 0。
+    // 只看原来那五列 —— v1.4.1 的四列在 garbled 段也是 null，拿它们当判据会把
+    // 「核心指标读不出」误判成「整格没数据」，ts 就断了
     if (!Number.isFinite(c) && !Number.isFinite(m) && !Number.isFinite(d) && !Number.isFinite(r) && !Number.isFinite(x)) continue;
     ts.push(g * HIST_STEP); cpu.push(c); mem.push(m); disk.push(d); rx.push(r); tx.push(x);
+    swap.push(h.swap[i]); tcp.push(h.tcp[i]); udp.push(h.udp[i]); procs.push(h.procs[i]);
   }
   return bucketRanges(ts.length, points).map(([i0, i1]) => ({
     ts: ts[i0 + ((i1 - i0 - 1) >> 1)],   // 取桶中点的时间戳：降采样后曲线不会被整体左移
@@ -235,6 +256,12 @@ function metricSeries(node, startGrid, endGrid, points) {
     disk_used: num(mean(disk, i0, i1)),
     net_rx: num(mean(rx, i0, i1)),
     net_tx: num(mean(tx, i0, i1)),
+    // v1.4.1 新增：交换已用量（字节）与三项计数。计数按上游口径取整（四舍五入），
+    // 桶内没有读数时 mean 返回 NaN，num 会把它变成 null —— 旧 hub 的列整段是 NaN
+    swap_used: num(mean(swap, i0, i1)),
+    tcp: num(mean(tcp, i0, i1), 0),
+    udp: num(mean(udp, i0, i1), 0),
+    procs: num(mean(procs, i0, i1), 0),
   }));
 }
 

@@ -120,12 +120,17 @@ async function load(id, series, hours, width) {
          * （小时级汇总取的是各分钟峰值的最大值），后者是这一格实际折进了多少
          * 分钟行。step 是整段响应共用的「每格覆盖多少秒」，用它减去 minutes
          * 才能看出哪几格没被填满 —— 缺了就是老 hub，那份说明也就不显示。
+         *
+         * swap_used / tcp / udp / procs 是 hub v1.4.1 起每行多出的四项：交换分区
+         * 已用量（字节）与 TCP/UDP 连接数、进程数（计数取整）。旧 hub 同样没有，
+         * 缺失即 null —— 交换曲线与连接数曲线整段不画，而不是画成 0。
          */
         : {
           hours: realHours,
           step: num(data.step),
           rows: normalizeRows(data.metrics, [
             'cpu', 'cpu_max', 'minutes', 'mem_used', 'disk_used', 'net_rx', 'net_tx', 'net_rx_max', 'net_tx_max',
+            'swap_used', 'tcp', 'udp', 'procs',
           ]),
         };
       cache.set(key, { t: Date.now(), data: out });
